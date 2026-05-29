@@ -3,54 +3,95 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SEED     42
+#define NUM_BINS  7
+#define LETTERS  26
+#define BIN_SIZE  4
+
+/* Genera una stringa di 'len' lettere minuscole casuali con seed fisso */
+static void generate_data(char *buf, long len) {
+    for (long i = 0; i < len; ++i)
+        buf[i] = 'a' + (rand() % LETTERS);
+    buf[len] = '\0';
+}
+
 int main(int argc, char *argv[]) {
 
-    char data[] = "skreygvfbzskygfvzsuegfsukzksytvLyeofueviuyqoywoqyetrouqyvtoqrytevbqtyvboqetyrvriuetboeirutbkeiyugbkzygrbkzyugrbfkuysgrbkuygrskuygrszkyugbrkzusygrbkzusyrzkuygrbkzsuygrbkzusyrgbzkyusgrbkzuysrlieoiewèpqpoqpqpowioppoqwepqcwouepqweqpwoqepwiieruwouryqeirueiqetuiqtwztiqibtxhmvmbcmxvowrugciurifwmivwpqpwqoieoquryeyrpqpyslhdfladkfhladhkgzvmcmzcbvklfuagaeilugfilayetyrvbqorqoreqtourvqeboyrvbqeytrqeioytrqeioyvboqeyiygskyugefLcAUWfVAUIOflie7aRPcFUHevlfuiGVlUIG";
-    int  length  = strlen(data);
+    /* Ordini di grandezza da testare */
+    static const long sizes[]   = { 10000000L, 50000000L, 100000000L, 500000000L };
+    /* Numeri di thread da testare */
+    static const int  threads[] = { 1, 2, 4, 8, 16, 32 , 64 , 128};
 
-    int num_threads = omp_get_max_threads();
+    int  num_sizes   = (int)(sizeof(sizes)   / sizeof(sizes[0]));
+    int  num_t_tests = (int)(sizeof(threads) / sizeof(threads[0]));
+    long max_size    = sizes[num_sizes - 1];
 
-    /* local_histograms[bin][thread_id] — dimensione dinamica basata sul num. di thread */
-    int (*local_histograms)[num_threads] = calloc(7, num_threads * sizeof(int));
-    int histogram[7] = {0};
+    /* Alloca il buffer una volta sola, dimensionato sul caso peggiore */
+    char *data = malloc((size_t)(max_size + 1));
+    if (!data) { fprintf(stderr, "Errore malloc\n"); return 1; }
 
-    double start_time = omp_get_wtime();
+    /* Intestazione tabella */
+    printf("\n%-12s  %-7s  %-14s  Istogramma [a-d  e-h  i-l  m-p  q-t  u-x  y-z]\n",
+           "Lunghezza", "Thread", "Tempo (s)");
+    printf("%-12s  %-7s  %-14s  %s\n",
+           "---------", "------", "---------",
+           "---------------------------------------------------");
+
+    for (int si = 0; si < num_sizes; ++si) {
+        long length = sizes[si];
+
+        /* Generazione stringa con seed fisso — FUORI dal timer */
+        srand(SEED);
+        generate_data(data, length);
+
+        for (int ti = 0; ti < num_t_tests; ++ti) {
+            int nthreads = threads[ti];
+            omp_set_num_threads(nthreads);
+
+            /* local_histograms[bin][thread_id] — dimensione dinamica */
+            int (*local_histograms)[nthreads] = calloc(NUM_BINS, nthreads * sizeof(int));
+            if (!local_histograms) { fprintf(stderr, "Errore calloc\n"); free(data); return 1; }
+            int histogram[NUM_BINS] = {0};
+
+            /* ===== TIMER START ===== */
+            double start_time = omp_get_wtime();
 
 #pragma omp parallel
-    {
-        int tid = omp_get_thread_num();
+            {
+                int tid = omp_get_thread_num();
 
 #pragma omp for
-        for (int i = 0; i < length; ++i) {
-            int alphabet_pos = (int)data[i] - 'a';
-            if (alphabet_pos >= 0 && alphabet_pos < 26) {
-                int bin = alphabet_pos / 4;
-                local_histograms[bin][tid]++;
+                for (long i = 0; i < length; ++i) {
+                    int alphabet_pos = (int)data[i] - 'a';
+                    if (alphabet_pos >= 0 && alphabet_pos < LETTERS) {
+                        int bin = alphabet_pos / BIN_SIZE;
+                        local_histograms[bin][tid]++;
+                    }
+                }
             }
+
+            for (int b = 0; b < NUM_BINS; ++b)
+                for (int t = 0; t < nthreads; ++t)
+                    histogram[b] += local_histograms[b][t];
+
+            double elapsed = omp_get_wtime() - start_time;
+            /* ===== TIMER STOP ===== */
+
+            /* Stampa riga risultati — bin come frazione del totale */
+            long total = 0;
+            for (int b = 0; b < NUM_BINS; ++b) total += histogram[b];
+
+            printf("%-12ld  %-7d  %-14.6f  ", length, nthreads, elapsed);
+            for (int b = 0; b < NUM_BINS; ++b)
+                printf("%5.2f%%%s", 100.0 * histogram[b] / total,
+                       b < NUM_BINS - 1 ? "  " : "\n");
+
+            free(local_histograms);
         }
+
+        printf("\n"); /* riga separatrice tra taglie diverse */
     }
 
-    for (int b = 0; b < 7; ++b)
-        for (int t = 0; t < num_threads; ++t)
-            histogram[b] += local_histograms[b][t];
-
-    double end_time = omp_get_wtime();
-    double elapsed  = end_time - start_time;
-
-    /* Stampa istogramma */
-    printf("\n=== ISTOGRAMMA (frequenza lettere per bin) ===\n");
-    for (int b = 0; b < 7; ++b) {
-        int start_letter = b * 4;
-        int end_letter   = start_letter + 3;
-        if (end_letter > 25) end_letter = 25;
-        printf("Bin %d [%c-%c]: %d\n",
-               b,
-               'a' + start_letter,
-               'a' + end_letter,
-               histogram[b]);
-    }
-    printf("\nTempo di esecuzione: %.6f secondi\n", elapsed);
-
-    free(local_histograms);
+    free(data);
     return 0;
 }
