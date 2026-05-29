@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     /* Ordini di grandezza da testare */
     static const long sizes[]   = { 10000000L, 50000000L, 100000000L, 500000000L };
     /* Numeri di thread da testare */
-    static const int  threads[] = { 1, 2, 4, 8, 16, 32 , 64 , 128};
+    static const int  threads[] = { 1, 2, 4, 8, 16, 32 , 64 , 128, 256, 512 };
 
     int  num_sizes   = (int)(sizeof(sizes)   / sizeof(sizes[0]));
     int  num_t_tests = (int)(sizeof(threads) / sizeof(threads[0]));
