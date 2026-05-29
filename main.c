@@ -8,7 +8,6 @@ int main (int argc, char *argv [] ) {
 
 char data[] = 'skreygvfbzskygfvzsuegfsukzygskyugefLçAUWfòVAUIOflie7aRPçFUHevlfuiGVlUIG'  
 int length = strlen(data);
-omp_set_num_threads(4);
 
 int local_histograms[7][4] = (0);
 int histogram[7] = (0);
