@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     /* Ordini di grandezza da testare */
     static const long sizes[]   = { 10000000L, 50000000L, 100000000L, 500000000L };
     /* Numeri di thread da testare */
-    static const int  threads[] = { 1, 2, 4, 8, 16, 32 , 64 , 128, 256, 512, 1024, 2048 , 4096 };
+    static const int  threads[] = { 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
     int  num_sizes   = (int)(sizeof(sizes)   / sizeof(sizes[0]));
     int  num_t_tests = (int)(sizeof(threads) / sizeof(threads[0]));
@@ -31,7 +31,8 @@ int main(int argc, char *argv[]) {
     if (!data) { fprintf(stderr, "Errore malloc\n"); return 1; }
 
     /* Intestazione tabella */
-    printf("\n%-12s  %-7s  %-12s  %-12s  %-12s  %-10s  %-12s\n",
+    printf("\n[Layout: local_histograms[nthreads][NUM_BINS] — niente false sharing]\n");
+    printf("%-12s  %-7s  %-12s  %-12s  %-12s  %-10s  %-12s\n",
            "Lunghezza", "Thread", "T.tot (s)", "T.par (s)", "T.red (s)", "Speedup", "Efficienza");
     printf("%-12s  %-7s  %-12s  %-12s  %-12s  %-10s  %-12s\n",
            "---------", "------", "---------", "---------", "---------", "-------", "(S/T)");
@@ -49,8 +50,14 @@ int main(int argc, char *argv[]) {
             int nthreads = threads[ti];
             omp_set_num_threads(nthreads);
 
-            /* local_histograms[bin][thread_id] — dimensione dinamica */
-            int (*local_histograms)[nthreads] = calloc(NUM_BINS, nthreads * sizeof(int));
+            /*
+             * Layout TRASPOSTO rispetto a main.c:
+             *   local_histograms[thread_id][bin]
+             *
+             * Ogni thread scrive sulla propria riga → nessun false sharing:
+             * thread 0 tocca local_histograms[0][*], thread 1 tocca [1][*], ecc.
+             */
+            int (*local_histograms)[NUM_BINS] = calloc(nthreads, NUM_BINS * sizeof(int));
             if (!local_histograms) { fprintf(stderr, "Errore calloc\n"); free(data); return 1; }
             int histogram[NUM_BINS] = {0};
 
@@ -66,16 +73,16 @@ int main(int argc, char *argv[]) {
                     int alphabet_pos = (int)data[i] - 'a';
                     if (alphabet_pos >= 0 && alphabet_pos < LETTERS) {
                         int bin = alphabet_pos / BIN_SIZE;
-                        local_histograms[bin][tid]++;
+                        local_histograms[tid][bin]++;   /* [tid][bin] — layout trasposto */
                     }
                 }
             }
 
             double after_parallel = omp_get_wtime();   /* checkpoint dopo la regione parallela */
 
-            for (int b = 0; b < NUM_BINS; ++b)
-                for (int t = 0; t < nthreads; ++t)
-                    histogram[b] += local_histograms[b][t];
+            for (int t = 0; t < nthreads; ++t)
+                for (int b = 0; b < NUM_BINS; ++b)
+                    histogram[b] += local_histograms[t][b];
 
             double elapsed           = omp_get_wtime() - start_time;
             double elapsed_parallel  = after_parallel  - start_time;
