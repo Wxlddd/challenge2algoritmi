@@ -31,10 +31,10 @@ int main(int argc, char *argv[]) {
     if (!data) { fprintf(stderr, "Errore malloc\n"); return 1; }
 
     /* Intestazione tabella */
-    printf("\n%-12s  %-7s  %-14s  Istogramma [a-d  e-h  i-l  m-p  q-t  u-x  y-z]\n",
-           "Lunghezza", "Thread", "Tempo (s)");
-    printf("%-12s  %-7s  %-14s  %s\n",
-           "---------", "------", "---------",
+    printf("\n%-12s  %-7s  %-12s  %-12s  %-12s  Istogramma [a-d  e-h  i-l  m-p  q-t  u-x  y-z]\n",
+           "Lunghezza", "Thread", "T.tot (s)", "T.par (s)", "T.red (s)");
+    printf("%-12s  %-7s  %-12s  %-12s  %-12s  %s\n",
+           "---------", "------", "---------", "---------", "---------",
            "---------------------------------------------------");
 
     for (int si = 0; si < num_sizes; ++si) {
@@ -70,18 +70,23 @@ int main(int argc, char *argv[]) {
                 }
             }
 
+            double after_parallel = omp_get_wtime();   /* checkpoint dopo la regione parallela */
+
             for (int b = 0; b < NUM_BINS; ++b)
                 for (int t = 0; t < nthreads; ++t)
                     histogram[b] += local_histograms[b][t];
 
-            double elapsed = omp_get_wtime() - start_time;
+            double elapsed           = omp_get_wtime() - start_time;
+            double elapsed_parallel  = after_parallel  - start_time;
+            double elapsed_reduction = elapsed - elapsed_parallel;
             /* ===== TIMER STOP ===== */
 
             /* Stampa riga risultati — bin come frazione del totale */
             long total = 0;
             for (int b = 0; b < NUM_BINS; ++b) total += histogram[b];
 
-            printf("%-12ld  %-7d  %-14.6f  ", length, nthreads, elapsed);
+            printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  ",
+                   length, nthreads, elapsed, elapsed_parallel, elapsed_reduction);
             for (int b = 0; b < NUM_BINS; ++b)
                 printf("%5.2f%%%s", 100.0 * histogram[b] / total,
                        b < NUM_BINS - 1 ? "  " : "\n");
