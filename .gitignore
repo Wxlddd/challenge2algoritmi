@@ -53,5 +53,11 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# binari compilati del progetto
 histogram_omp
 histogram2_omp
+histogram3_omp
+v1
+v2
+v3

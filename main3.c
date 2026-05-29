@@ -3,8 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NUM_BINS 7
-#define LETTERS  26
+#define NUM_BINS    7
+#define LETTERS     26
+/* 16 int * 4 byte = 64 byte = 1 cache line, evita false sharing */
+#define PADDED_BINS 16
 
 static void gen_data(char *buf, long len) {
     for (long i = 0; i < len; i++)
@@ -22,7 +24,7 @@ int main(int argc, char *argv[]) {
     char *data = malloc(sizes[nsizes-1] + 1);
     if (!data) { fprintf(stderr, "malloc failed\n"); return 1; }
 
-    printf("=== main.c: layout [bin][tid] ===\n");
+    printf("=== main3.c: layout [tid][PADDED_BINS=16] (cache line padding) ===\n");
     printf("%-12s  %-7s  %-12s  %-12s  %-12s  %-10s  %s\n",
            "len", "threads", "T.tot", "T.par", "T.red", "speedup", "efficiency");
 
@@ -37,8 +39,16 @@ int main(int argc, char *argv[]) {
             int nt = threads[ti];
             omp_set_num_threads(nt);
 
-            int (*lh)[nt] = calloc(NUM_BINS, nt * sizeof(int));
-            if (!lh) { fprintf(stderr, "calloc failed\n"); free(data); return 1; }
+            /* un array da 64 byte per thread: nessuna cache line condivisa */
+            int **lh = malloc(nt * sizeof(int *));
+            if (!lh) { fprintf(stderr, "malloc failed\n"); free(data); return 1; }
+            for (int t = 0; t < nt; t++) {
+                lh[t] = calloc(PADDED_BINS, sizeof(int));
+                if (!lh[t]) {
+                    for (int k = 0; k < t; k++) free(lh[k]);
+                    free(lh); free(data); return 1;
+                }
+            }
             int hist[NUM_BINS] = {0};
 
             double t_start = omp_get_wtime();
@@ -50,15 +60,15 @@ int main(int argc, char *argv[]) {
                 for (long i = 0; i < len; i++) {
                     int pos = (int)data[i] - 'a';
                     if (pos >= 0 && pos < LETTERS)
-                        lh[pos / 4][tid]++;
+                        lh[tid][pos / 4]++;
                 }
             }
 
             double t_mid = omp_get_wtime();
 
-            for (int b = 0; b < NUM_BINS; b++)
-                for (int t = 0; t < nt; t++)
-                    hist[b] += lh[b][t];
+            for (int t = 0; t < nt; t++)
+                for (int b = 0; b < NUM_BINS; b++)
+                    hist[b] += lh[t][b];
 
             double t_end  = omp_get_wtime();
             double tot    = t_end - t_start;
@@ -72,6 +82,7 @@ int main(int argc, char *argv[]) {
             printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  %-10.3fx  %.4f\n",
                    len, nt, tot, par, red, sp, eff);
 
+            for (int t = 0; t < nt; t++) free(lh[t]);
             free(lh);
         }
         printf("\n");
