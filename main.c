@@ -5,7 +5,7 @@
 
 int main(int argc, char *argv[]) {
 
-    char data[] = "skreygvfbzskygfvzsuegfsukzygskyugefLcAUWfVAUIOflie7aRPcFUHevlfuiGVlUIG";
+    char data[] = "skreygvfbzskygfvzsuegfsukzksytvLyeofueviuyqoywoqyetrouqyvtoqrytevbqtyvboqetyrvriuetboeirutbkeiyugbkzygrbkzyugrbfkuysgrbkuygrskuygrszkyugbrkzusygrbkzusyrzkuygrbkzsuygrbkzusyrgbzkyusgrbkzuysrlieoiewèpqpoqpqpowioppoqwepqcwouepqweqpwoqepwiieruwouryqeirueiqetuiqtwztiqibtxhmvmbcmxvowrugciurifwmivwpqpwqoieoquryeyrpqpyslhdfladkfhladhkgzvmcmzcbvklfuagaeilugfilayetyrvbqorqoreqtourvqeboyrvbqeytrqeioytrqeioyvboqeyiygskyugefLcAUWfVAUIOflie7aRPcFUHevlfuiGVlUIG";
     int  length  = strlen(data);
 
     int num_threads = omp_get_max_threads();
