@@ -31,10 +31,10 @@ int main(int argc, char *argv[]) {
     if (!data) { fprintf(stderr, "Errore malloc\n"); return 1; }
 
     /* Intestazione tabella */
-    printf("\n%-12s  %-7s  %-12s  %-12s  %-12s  %-10s\n",
-           "Lunghezza", "Thread", "T.tot (s)", "T.par (s)", "T.red (s)", "Speedup");
-    printf("%-12s  %-7s  %-12s  %-12s  %-12s  %-10s\n",
-           "---------", "------", "---------", "---------", "---------", "-------");
+    printf("\n%-12s  %-7s  %-12s  %-12s  %-12s  %-10s  %-12s\n",
+           "Lunghezza", "Thread", "T.tot (s)", "T.par (s)", "T.red (s)", "Speedup", "Efficienza");
+    printf("%-12s  %-7s  %-12s  %-12s  %-12s  %-10s  %-12s\n",
+           "---------", "------", "---------", "---------", "---------", "-------", "(S/T)");
 
     for (int si = 0; si < num_sizes; ++si) {
         long length = sizes[si];
@@ -83,10 +83,12 @@ int main(int argc, char *argv[]) {
             /* ===== TIMER STOP ===== */
 
             if (ti == 0) baseline_elapsed = elapsed;  /* salva il tempo a 1 thread */
-            double speedup = baseline_elapsed / elapsed;
+            double speedup    = baseline_elapsed / elapsed;
+            double efficiency = speedup / nthreads;
 
-            printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  %-10.3fx\n",
-                   length, nthreads, elapsed, elapsed_parallel, elapsed_reduction, speedup);
+            printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  %-10.3fx  %-12.4f\n",
+                   length, nthreads, elapsed, elapsed_parallel, elapsed_reduction,
+                   speedup, efficiency);
 
             free(local_histograms);
         }
