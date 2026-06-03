@@ -39,15 +39,11 @@ int main(int argc, char *argv[]) {
             int nt = threads[ti];
             omp_set_num_threads(nt);
 
-            /* un array da 64 byte per thread: nessuna cache line condivisa */
-            int **lh = malloc(nt * sizeof(int *));
-            if (!lh) { fprintf(stderr, "malloc failed\n"); free(data); return 1; }
-            for (int t = 0; t < nt; t++) {
-                lh[t] = calloc(PADDED_BINS, sizeof(int));
-                if (!lh[t]) {
-                    for (int k = 0; k < t; k++) free(lh[k]);
-                    free(lh); free(data); return 1;
-                }
+            int (*lh)[PADDED_BINS] = calloc(nt, PADDED_BINS * sizeof(int));
+            if (!lh) {
+                fprintf(stderr, "Error: calloc failed\n");
+                free(data);
+                return 1;
             }
             int hist[NUM_BINS] = {0};
 
@@ -58,17 +54,20 @@ int main(int argc, char *argv[]) {
                 int tid = omp_get_thread_num();
 #pragma omp for
                 for (long i = 0; i < len; i++) {
-                    int pos = (int)data[i] - 'a';
-                    if (pos >= 0 && pos < LETTERS)
+                    int pos = data[i] - 'a';
+                    if (pos >= 0 && pos < LETTERS) {
                         lh[tid][pos / 4]++;
+                    }
                 }
             }
 
             double t_mid = omp_get_wtime();
 
-            for (int t = 0; t < nt; t++)
-                for (int b = 0; b < NUM_BINS; b++)
+            for (int t = 0; t < nt; t++) {
+                for (int b = 0; b < NUM_BINS; b++) {
                     hist[b] += lh[t][b];
+                }
+            }
 
             double t_end  = omp_get_wtime();
             double tot    = t_end - t_start;
@@ -79,10 +78,12 @@ int main(int argc, char *argv[]) {
             double sp  = t1 / tot;
             double eff = sp / nt;
 
-            printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  %-10.3fx  %.4f\n",
-                   len, nt, tot, par, red, sp, eff);
+            char sp_str[16];
+            snprintf(sp_str, sizeof(sp_str), "%.3fx", sp);
 
-            for (int t = 0; t < nt; t++) free(lh[t]);
+            printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  %-10s  %.4f\n",
+                   len, nt, tot, par, red, sp_str, eff);
+
             free(lh);
         }
         printf("\n");

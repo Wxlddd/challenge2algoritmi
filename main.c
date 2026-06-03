@@ -37,8 +37,12 @@ int main(int argc, char *argv[]) {
             int nt = threads[ti];
             omp_set_num_threads(nt);
 
-            int (*lh)[nt] = calloc(NUM_BINS, nt * sizeof(int));
-            if (!lh) { fprintf(stderr, "calloc failed\n"); free(data); return 1; }
+            int *lh = calloc(NUM_BINS * nt, sizeof(int));
+            if (!lh) {
+                fprintf(stderr, "Error: calloc failed\n");
+                free(data);
+                return 1;
+            }
             int hist[NUM_BINS] = {0};
 
             double t_start = omp_get_wtime();
@@ -48,17 +52,20 @@ int main(int argc, char *argv[]) {
                 int tid = omp_get_thread_num();
 #pragma omp for
                 for (long i = 0; i < len; i++) {
-                    int pos = (int)data[i] - 'a';
-                    if (pos >= 0 && pos < LETTERS)
-                        lh[pos / 4][tid]++;
+                    int pos = data[i] - 'a';
+                    if (pos >= 0 && pos < LETTERS) {
+                        lh[(pos / 4) * nt + tid]++;
+                    }
                 }
             }
 
             double t_mid = omp_get_wtime();
 
-            for (int b = 0; b < NUM_BINS; b++)
-                for (int t = 0; t < nt; t++)
-                    hist[b] += lh[b][t];
+            for (int b = 0; b < NUM_BINS; b++) {
+                for (int t = 0; t < nt; t++) {
+                    hist[b] += lh[b * nt + t];
+                }
+            }
 
             double t_end  = omp_get_wtime();
             double tot    = t_end - t_start;
@@ -69,8 +76,11 @@ int main(int argc, char *argv[]) {
             double sp  = t1 / tot;
             double eff = sp / nt;
 
-            printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  %-10.3fx  %.4f\n",
-                   len, nt, tot, par, red, sp, eff);
+            char sp_str[16];
+            snprintf(sp_str, sizeof(sp_str), "%.3fx", sp);
+
+            printf("%-12ld  %-7d  %-12.6f  %-12.6f  %-12.6f  %-10s  %.4f\n",
+                   len, nt, tot, par, red, sp_str, eff);
 
             free(lh);
         }

@@ -1,93 +1,57 @@
-# Domanda 1 — Completamento del codice
+# Domanda 1 — Completamento del codice e Scelte di Implementazione
 
-Il codice scheletro era già strutturalmente corretto. Mancavano due cose:
-l'inizializzazione delle variabili e la misurazione del tempo.
+La versione originaria presentava alcune omissioni e criticità strutturali, che sono state risolte con implementazioni conformi agli standard industriali del linguaggio C per garantire massima portabilità e riproducibilità.
 
 ---
 
 ## 1. Inizializzazione delle variabili
 
-Nel codice scheletro erano presenti variabili usate ma non dichiarate né
-inizializzate. Queste sono le aggiunte necessarie:
+Per rendere il programma compilabile ed eseguibile, sono stati dichiarati e inizializzati correttamente i seguenti elementi:
 
-### `data` — la stringa di input
-```c
-char data[] = "skreygvfbzskygfvzsuegfsukzygskyugef...";
-int length = strlen(data);
-```
-`data` contiene la sequenza di caratteri da analizzare; `length` ne indica
-la lunghezza, usata come bound nel ciclo parallelo.
+### Buffer dei dati (`data` e `length`)
+Il buffer di input `data` viene allocato dinamicamente in base alle dimensioni del dataset prescelto (fino a 500 milioni di caratteri). Per garantire che l'input sia coerente e confrontabile tra le varie versioni, la generazione della stringa casuale viene guidata da un seed fisso (`srand(42)`).
 
-### `total_threads` — numero di thread
-```c
-int total_threads = omp_get_max_threads();
-```
-Restituisce il numero massimo di thread che OpenMP utilizzerà nella regione
-parallela. Serve come bound nel ciclo di riduzione finale.
+### Riduzione seriale finale e conteggio thread
+Il numero di thread da testare viene configurato a ogni passo tramite `omp_set_num_threads(nt)`. Il numero massimo di thread istanziati serve poi come limite superiore per il ciclo di riduzione finale.
 
-### `local_histograms` e `histogram` — i contatori
+### Allocazione dei contatori locali
+Per evitare l'uso di Variable-Length Arrays (VLA) a livello di puntatore (`int (*lh)[nt]`), che non sono supportati in modo nativo su tutti i compilatori (come MSVC su Windows) e sono opzionali a partire dallo standard C11, si è preferito utilizzare un array lineare monodimensionale allocato via `calloc`:
 ```c
-int local_histograms[7][total_threads]; // un contatore per bin per thread
-int histogram[7] = {0};                // istogramma globale finale
+int *lh = calloc(NUM_BINS * nt, sizeof(int));
 ```
-Senza l'inizializzazione a `{0}`, le variabili locali in C contengono valori
-indefiniti (garbage), rendendo i risultati dell'istogramma completamente errati.
-`local_histograms` viene azzerato implicitamente se dichiarato come VLA locale,
-o esplicitamente con `memset`/`calloc` se allocato dinamicamente.
+Questa struttura viene azzerata automaticamente da `calloc` ed è indicizzata tramite calcolo dell'offset `lh[bin * nt + tid]`. L'istogramma globale finale `hist` viene azzerato esplicitamente prima del calcolo per evitare valori indefiniti presenti in memoria (garbage value).
 
 ---
 
 ## 2. Misurazione del tempo di esecuzione
 
-Mancava completamente la misurazione. Abbiamo usato `omp_get_wtime()`,
-la funzione wall-clock ad alta risoluzione fornita da OpenMP.
+La misurazione del tempo viene effettuata tramite la funzione ad alta precisione `omp_get_wtime()`. 
+Per isolare e misurare con precisione il comportamento parallelo ed evidenziare l'impatto del false sharing, il codice campiona tre momenti distinti:
 
-Il timer viene avviato **subito prima** della regione parallela e fermato
-**dopo** la riduzione, in modo da includere entrambe le fasi:
+- `t_start`: Subito prima dell'avvio del costrutto `#pragma omp parallel`.
+- `t_mid`: Immediatamente al termine del costrutto parallelo, prima della riduzione seriale.
+- `t_end`: Al termine del calcolo della riduzione seriale finale.
 
-```c
-double start_time = omp_get_wtime();   // START
+Da questi checkpoint si ricavano tre intervalli:
+- `T.tot = t_end - t_start`: Tempo complessivo del benchmark.
+- `T.par = t_mid - t_start`: Tempo speso esclusivamente nella fase parallela di conteggio.
+- `T.red = t_end - t_mid`: Tempo speso nella fase seriale di riduzione finale.
 
-#pragma omp parallel
-{
-    int tid = omp_get_thread_num();
-    #pragma omp for
-    for (int i = 0; i < length; ++i) {
-        int alphabet_pos = (int)data[i] - 'a';
-        if (alphabet_pos >= 0 && alphabet_pos < 26) {
-            int bin = alphabet_pos / 4;
-            local_histograms[bin][tid]++;
-        }
-    }
-}
-
-for (int b = 0; b < 7; ++b)
-    for (int t = 0; t < total_threads; ++t)
-        histogram[b] += local_histograms[b][t];
-
-double elapsed = omp_get_wtime() - start_time;   // STOP
-
-printf("Tempo di esecuzione: %.6f secondi\n", elapsed);
-```
+L'analisi empirica dimostra che `T.red` (riduzione seriale) è dell'ordine dei microsecondi ed è del tutto trascurabile rispetto a `T.par` su tutte le taglie e thread count testati.
 
 ---
 
-## Ottimizzazioni successive
+## 3. Ottimizzazioni e Struttura della Memoria
 
-Dopo aver completato il codice base, abbiamo apportato alcune ottimizzazioni:
+### Versione Base (`main.c`)
+I thread condividono la stessa riga della matrice in quanto indicizzati come `lh[bin * nt + tid]`. Poiché le locazioni contigue in memoria sono modificate da thread diversi, si verifica il fenomeno del **false sharing** che causa l'invalidazione continua delle linee di cache e degrada le performance.
 
-- **Dimensione dinamica di `local_histograms`**: invece di allocare `[7][4]`
-  con il numero di thread hardcoded, si usa `omp_get_max_threads()` e `calloc`
-  (che azzera automaticamente):
-  ```c
-  int num_threads = omp_get_max_threads();
-  int (*local_histograms)[num_threads] = calloc(NUM_BINS, num_threads * sizeof(int));
-  ```
+### Versione Trasposta (`main2.c`)
+Ogni thread scrive in una riga dedicata contigua di 7 interi (`7 * 4 = 28` byte) tramite il layout `lh[tid][bin]`. Questo riduce il false sharing ma non lo elimina del tutto, in quanto la dimensione della riga è inferiore a una cache line standard (64 byte), permettendo a righe di thread diversi di condividere la stessa linea fisica.
 
-- **Benchmark multi-taglia e multi-thread**: loop su dimensioni dell'input
-  (10 M, 50 M, 100 M, 500 M caratteri) e su numeri di thread crescenti,
-  con stampa di speedup ed efficienza parallela per ogni combinazione.
-
-- **Eliminazione del false sharing** (`main2.c`, `main3.c`): layout trasposto
-  della matrice `[tid][bin]` e padding a 64 byte per cache line, per evitare
-  che thread diversi invalidino reciprocamente le stesse cache line.
+### Versione Padded (`main3.c`)
+Ogni thread scrive su una riga allineata a 64 byte tramite il layout `lh[tid][bin]` con `PADDED_BINS = 16` (`16 * 4 = 64` byte):
+```c
+int (*lh)[PADDED_BINS] = calloc(nt, PADDED_BINS * sizeof(int));
+```
+Con un'unica chiamata pulita ed efficiente a `calloc`, ciascun thread ottiene una cache line intera dedicata, garantendo la totale assenza di false sharing senza overhead di allocazione.

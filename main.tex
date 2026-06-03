@@ -1,0 +1,432 @@
+
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{pdfpages}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{pgfplots}
+\usepackage{longtable}
+\usepackage{listings}
+\usepackage{xcolor}
+\pgfplotsset{compat=1.18}
+
+\begin{document}
+
+\includepdf[pages=1-3]{AACAP26___2nd_Part___Challenge.pdf}
+
+\newpage 
+
+\title{AACAP26 - OpenMP Challenge\\Relazione e Risposte ai Quesiti}
+\author{}
+\date{\today}
+\maketitle
+
+\section{Inizializzazione delle variabili e misurazione del tempo}
+
+Il codice fornito ometteva la dichiarazione e l'inizializzazione delle strutture dati, oltre alla logica legata al calcolo del tempo di esecuzione. Di seguito vengono descritte le integrazioni necessarie per rendere il programma eseguibile e per condurre gli esperimenti.
+
+\subsection{Inizializzazione delle Variabili}
+
+Le variabili necessarie all'esecuzione sono state definite e allocate come segue:
+
+\begin{itemize}
+    \item \texttt{data} e \texttt{length}: L'array di input contenente i caratteri da analizzare e la sua grandezza, utilizzata come limite superiore (\textit{bound}) per il ciclo parallelo. Nei test successivi, il buffer viene allocato dinamicamente in base alle dimensioni del \textit{dataset} e popolato tramite una funzione pseudocasuale controllata da un \textit{seed} fisso.
+   \item \texttt{total\_threads}: Il numero di thread da impiegare. Per condurre i test di scalabilità, questo valore è stato imposto iterativamente via codice (tramite la funzione \texttt{omp\_set\_num\_threads()}) scorrendo un array di potenze di due. Tale valore definisce inoltre l'upper bound per il ciclo della riduzione seriale finale.
+    \item \texttt{local\_histograms} e \texttt{histogram}: Le variabili necessarie per tenere traccia del numero di frequenze. È necessario inizializzare esplicitamente l'array globale \texttt{histogram} a zero per eliminare valori indefiniti preesistenti in memoria. Per la matrice dei contatori locali, si è implementata l'allocazione dinamica:
+\end{itemize}
+
+\begin{lstlisting}[language=C, numbers=none, frame=single, basicstyle=\ttfamily\small]
+int num_threads = omp_get_max_threads();
+int (*local_histograms)[num_threads] = calloc(NUM_BINS, num_threads * sizeof(int));
+int histogram[NUM_BINS] = {0};
+\end{lstlisting}
+
+La funzione \texttt{calloc} alloca dinamicamente lo spazio  necessario e azzera simultaneamente la corrispondente porzione di memoria, assicurando la validità dei conteggi iniziali.
+
+\subsection{Misurazione del Tempo di Esecuzione}
+
+Per quantificare in modo preciso le prestazioni si è fatto ricorso a \texttt{omp\_get\_wtime()}, la funzione fornita dall'API di OpenMP. è stato aggiunto anche un punto di campionamento intermedio (\texttt{t\_mid}),in modo da separare il tempo di esecuzione della sezione parallela e dal \texttt{for} responsabile della riduzione finale.
+
+\begin{lstlisting}[language=C, numbers=left, frame=single, basicstyle=\ttfamily\small]
+double t_start = omp_get_wtime(); // Avvio misurazione
+
+#pragma omp parallel
+{
+    int tid = omp_get_thread_num();
+    #pragma omp for
+    for (long i = 0; i < length; ++i) {
+        int alphabet_pos = (int)data[i] - 'a';
+        if (alphabet_pos >= 0 && alphabet_pos < 26) {
+            int bin = alphabet_pos / 4;
+            local_histograms[bin][tid]++;
+        }
+    }
+}
+double t_mid = omp_get_wtime(); // Checkpoint intermedio
+
+// Riduzione seriale globale
+for (int b = 0; b < NUM_BINS; ++b) {
+    for (int t = 0; t < total_threads; ++t) {
+        histogram[b] += local_histograms[b][t];
+    }
+}
+
+double t_end  = omp_get_wtime();
+double tot    = t_end - t_start;
+double par    = t_mid - t_start;
+double red    = t_end - t_mid;
+\end{lstlisting}
+
+Analizzando le misurazioni isolate (\texttt{red}), è emerso che il tempo necessario per lo svolgimento del ciclo di riduzione seriale finale (i due cicli \texttt{for} annidati) risulta essere ordini di grandezza inferiore rispetto a quello impiegato per la porzione parallela e del tutto trascurabile indipendentemente dalla dimensione dell'array di input. Per questo motivo, nelle sezioni successive l'analisi della performance è incentrata sulla sola porzione parallela.
+
+
+\section{Caratteristiche della macchina di test}
+\begin{itemize}
+    \item Architettura / Modello CPU: Intel(R) Core(TM) Ultra 7 256V 
+    \item Sistema Operativo: Ubuntu-26.04;
+    \item Numero dei Core fisici/logici:  8; 
+    \item Thread(s) per core: 1; 
+    \item Versione di OpenMP utilizzata: 201511
+    \item Caches :\newline
+  L1d:                       384 KiB (8 istanze);\newline
+  L1i:                       512 KiB (8 istanze);\newline
+  L2:                        20 MiB (8 istanze);\newline
+  L3:                        12 MiB (1 istanza);\newline
+\end{itemize}
+\newpage
+
+\subsection*{Risultati dei test empirici (Versione Base - v1)}
+
+\begin{center}
+\small
+\begin{longtable}{crccccc}
+    \caption{Tempi di esecuzione, speedup ed efficienza estesi fino a 4096 thread (v1).} \label{tab:performance_data_ext} \\
+    \toprule
+    \textbf{Lunghezza} & \textbf{Thread} & \textbf{T.tot (s)} & \textbf{T.par (s)} & \textbf{T.red (s)} & \textbf{Speedup} & \textbf{Efficienza} \\
+    \midrule
+    \endfirsthead
+    
+    \multicolumn{7}{c}%
+    {{\bfseries \tablename\ \thetable{} -- continua dalla pagina precedente}} \\
+    \toprule
+    \textbf{Lunghezza} & \textbf{Thread} & \textbf{T.tot (s)} & \textbf{T.par (s)} & \textbf{T.red (s)} & \textbf{Speedup} & \textbf{Efficienza} \\
+    \midrule
+    \endhead
+    
+    \midrule \multicolumn{7}{r}{{Continua nella pagina successiva}} \\
+    \endfoot
+    
+    \bottomrule
+    \endlastfoot
+
+    \textbf{10\,000\,000} 
+    & 1    & 0.005880 & 0.005880 & 0.000000 & 1.000 & 1.0000 \\
+    & 2    & 0.035507 & 0.035507 & 0.000000 & 0.166 & 0.0828 \\
+    & 4    & 0.053110 & 0.053110 & 0.000000 & 0.111 & 0.0277 \\
+    & 8    & 0.043321 & 0.043321 & 0.000000 & 0.136 & 0.0170 \\
+    & 16   & 0.031730 & 0.031729 & 0.000000 & 0.185 & 0.0116 \\
+    & 32   & 0.026511 & 0.026511 & 0.000000 & 0.222 & 0.0069 \\
+    & 64   & 0.016189 & 0.016189 & 0.000000 & 0.363 & 0.0057 \\
+    & 128  & 0.011943 & 0.011942 & 0.000000 & 0.492 & 0.0038 \\
+    & 256  & 0.012901 & 0.012901 & 0.000000 & 0.456 & 0.0018 \\
+    & 512  & 0.013137 & 0.013137 & 0.000000 & 0.448 & 0.0009 \\
+    & 1024 & 0.028169 & 0.028169 & 0.000000 & 0.209 & 0.0002 \\
+    & 2048 & 0.036932 & 0.036932 & 0.000000 & 0.159 & 0.0001 \\
+    & 4096 & 0.063945 & 0.063945 & 0.000000 & 0.092 & 0.0000 \\
+    \midrule
+    
+    \textbf{50\,000\,000} 
+    & 1    & 0.031097 & 0.031097 & 0.000000 & 1.000 & 1.0000 \\
+    & 2    & 0.132178 & 0.132178 & 0.000000 & 0.235 & 0.1176 \\
+    & 4    & 0.338721 & 0.338721 & 0.000000 & 0.092 & 0.0230 \\
+    & 8    & 0.498342 & 0.498341 & 0.000000 & 0.062 & 0.0078 \\
+    & 16   & 0.414824 & 0.414823 & 0.000000 & 0.075 & 0.0047 \\
+    & 32   & 0.179754 & 0.179754 & 0.000000 & 0.173 & 0.0054 \\
+    & 64   & 0.104953 & 0.104953 & 0.000000 & 0.296 & 0.0046 \\
+    & 128  & 0.046515 & 0.046514 & 0.000000 & 0.669 & 0.0052 \\
+    & 256  & 0.044367 & 0.044366 & 0.000000 & 0.701 & 0.0027 \\
+    & 512  & 0.035178 & 0.035177 & 0.000000 & 0.884 & 0.0017 \\
+    & 1024 & 0.036617 & 0.036616 & 0.000000 & 0.849 & 0.0008 \\
+    & 2048 & 0.072763 & 0.072763 & 0.000000 & 0.427 & 0.0002 \\
+    & 4096 & 0.057263 & 0.057263 & 0.000000 & 0.543 & 0.0001 \\
+    \midrule
+    
+    \textbf{100\,000\,000} 
+    & 1    & 0.065111 & 0.065110 & 0.000001 & 1.000 & 1.0000 \\
+    & 2    & 0.475995 & 0.475995 & 0.000001 & 0.137 & 0.0684 \\
+    & 4    & 0.660241 & 0.660241 & 0.000000 & 0.099 & 0.0247 \\
+    & 8    & 1.003032 & 1.003031 & 0.000000 & 0.065 & 0.0081 \\
+    & 16   & 0.808979 & 0.808978 & 0.000001 & 0.080 & 0.0050 \\
+    & 32   & 0.380600 & 0.380599 & 0.000000 & 0.171 & 0.0053 \\
+    & 64   & 0.186235 & 0.186235 & 0.000000 & 0.350 & 0.0055 \\
+    & 128  & 0.077259 & 0.077259 & 0.000000 & 0.843 & 0.0066 \\
+    & 256  & 0.080342 & 0.080342 & 0.000000 & 0.810 & 0.0032 \\
+    & 512  & 0.048536 & 0.048536 & 0.000000 & 1.341 & 0.0026 \\
+    & 1024 & 0.124500 & 0.124500 & 0.000000 & 0.523 & 0.0005 \\
+    & 2048 & 0.088913 & 0.088912 & 0.000000 & 0.732 & 0.0004 \\
+    & 4096 & 0.114118 & 0.114117 & 0.000000 & 0.571 & 0.0001 \\
+    \midrule
+    
+    \textbf{500\,000\,000} 
+    & 1    & 0.309843 & 0.309843 & 0.000001 & 1.000 & 1.0000 \\
+    & 2    & 2.330853 & 2.330853 & 0.000000 & 0.133 & 0.0665 \\
+    & 4    & 3.347264 & 3.347263 & 0.000000 & 0.093 & 0.0231 \\
+    & 8    & 4.853035 & 4.853035 & 0.000000 & 0.064 & 0.0080 \\
+    & 16   & 4.036146 & 4.036146 & 0.000001 & 0.077 & 0.0048 \\
+    & 32   & 1.970446 & 1.970446 & 0.000000 & 0.157 & 0.0049 \\
+    & 64   & 0.600725 & 0.600724 & 0.000000 & 0.516 & 0.0081 \\
+    & 128  & 0.263330 & 0.263330 & 0.000001 & 1.177 & 0.0092 \\
+    & 256  & 0.297436 & 0.297435 & 0.000000 & 1.042 & 0.0041 \\
+    & 512  & 0.225500 & 0.225500 & 0.000000 & 1.374 & 0.0027 \\
+    & 1024 & 0.183772 & 0.183771 & 0.000000 & 1.686 & 0.0016 \\
+    & 2048 & 0.213629 & 0.213629 & 0.000000 & 1.450 & 0.0007 \\
+    & 4096 & 0.253271 & 0.253271 & 0.000000 & 1.223 & 0.0003 \\
+\end{longtable}
+\end{center}
+
+\begin{figure}[h!]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=\textwidth,
+            height=8cm,
+            title={Scalabilità Baseline (v1): Speedup vs Numero di Threads},
+            xlabel={Numero di Threads ($p$)},
+            ylabel={Speedup ($S(p)$)},
+            xmode=log,
+            log basis x=2,
+            xtick={1,4,16,64,256,1024,4096},
+            xticklabels={1,4,16,64,256,1024,4096},
+            ymin=0, ymax=1.8,
+            grid=both,
+            grid style={dashed, gray!30},
+            legend pos=north west,
+            legend style={font=\footnotesize},
+            mark size=1.5pt
+        ]
+        
+        \addplot[color=blue, mark=square*] coordinates {
+            (1,1.000) (2,0.166) (4,0.111) (8,0.136) (16,0.185) (32,0.222) 
+            (64,0.363) (128,0.492) (256,0.456) (512,0.448) (1024,0.209) (2048,0.159) (4096,0.092)
+        };
+        \addlegendentry{$L = 10^7$}
+
+        \addplot[color=red, mark=triangle*] coordinates {
+            (1,1.000) (2,0.235) (4,0.092) (8,0.062) (16,0.075) (32,0.173) 
+            (64,0.296) (128,0.669) (256,0.701) (512,0.884) (1024,0.849) (2048,0.427) (4096,0.543)
+        };
+        \addlegendentry{$L = 5 \cdot 10^7$}
+
+        \addplot[color=green!60!black, mark=diamond*] coordinates {
+            (1,1.000) (2,0.137) (4,0.099) (8,0.065) (16,0.080) (32,0.171) 
+            (64,0.350) (128,0.843) (256,0.810) (512,1.341) (1024,0.523) (2048,0.732) (4096,0.571)
+        };
+        \addlegendentry{$L = 10^8$}
+
+        \addplot[color=orange, mark=*] coordinates {
+            (1,1.000) (2,0.133) (4,0.093) (8,0.064) (16,0.077) (32,0.157) 
+            (64,0.516) (128,1.177) (256,1.042) (512,1.374) (1024,1.686) (2048,1.450) (4096,1.223)
+        };
+        \addlegendentry{$L = 5 \cdot 10^8$}
+
+        \addplot[color=black, dashed, thick, domain=1:4096] {1};
+        \addlegendentry{Baseline (S=1)}
+
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Rappresentazione dello speedup su un intervallo esteso. Il degrado prestazionale che si osserva quando si utilizzano più di 1024 thread viene analizzato nella Sezione \ref{sec:analysis}.}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=\textwidth,
+            height=8cm,
+            title={Tempi di Esecuzione Baseline (v1): $T_{tot}$ vs Number of Threads},
+            xlabel={Numero di Thread ($p$)},
+            ylabel={Tempo Totale (s) - Scala Log},
+            xmode=log,
+            log basis x=2,
+            ymode=log,
+            xtick={1,4,16,64,256,1024,4096},
+            xticklabels={1,4,16,64,256,1024,4096},
+            grid=both,
+            grid style={dashed, gray!30},
+            legend pos=south east,
+            legend style={font=\footnotesize},
+            mark size=1.5pt
+        ]
+        
+        \addplot[color=blue, mark=square*] coordinates {
+            (1,0.005880) (2,0.035507) (4,0.053110) (8,0.043321) (16,0.031730) 
+            (32,0.026511) (64,0.016189) (128,0.011943) (256,0.012901) (512,0.013137) (1024,0.028169) (2048,0.036932) (4096,0.063945)
+        };
+        \addlegendentry{$L = 10^7$}
+
+        \addplot[color=red, mark=triangle*] coordinates {
+            (1,0.031097) (2,0.132178) (4,0.338721) (8,0.498342) (16,0.414824) 
+            (32,0.179754) (64,0.104953) (128,0.046515) (256,0.044367) (512,0.035178) (1024,0.036617) (2048,0.072763) (4096,0.057263)
+        };
+        \addlegendentry{$L = 5 \cdot 10^7$}
+
+        \addplot[color=green!60!black, mark=diamond*] coordinates {
+            (1,0.065111) (2,0.475995) (4,0.660241) (8,1.003032) (16,0.808979) 
+            (32,0.380600) (64,0.186235) (128,0.077259) (256,0.080342) (512,0.048536) (1024,0.124500) (2048,0.088913) (4096,0.114118)
+        };
+        \addlegendentry{$L = 10^8$}
+
+        \addplot[color=orange, mark=*] coordinates {
+            (1,0.309843) (2,2.330853) (4,3.347264) (8,4.853035) (16,4.036146) 
+            (32,1.970446) (64,0.600725) (128,0.263330) (256,0.297436) (512,0.225500) (1024,0.183772) (2048,0.213629) (4096,0.253271)
+        };
+        \addlegendentry{$L = 5 \cdot 10^8$}
+
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Andamento del tempo totale di esecuzione. Si nota chiaramente il picco di inefficienza nei primi stadi di parallelizzazione dovuto al false sharing, seguito da un miglioramento (non particolarmente significativo rispetto alla baseline) e infine una saturazione del guadagno prestazionale. Anche in questo caso, sono presenti più dettagli nella Sezione \ref{sec:analysis}.}
+\end{figure}
+\clearpage
+
+\section{Analisi della non-linearità ed ipotesi sull'architettura}\label{sec:analysis}
+
+Analizzando i dati raccolti, emerge chiaramente che lo speedup non solo non ha un andamento lineare, ma per la maggior parte dei test è strettamente inferiore a 1. Paradossalmente, l'esecuzione parallela è significativamente più lenta rispetto a quella sequenziale. 
+In base all'architettura del calcolatore, si sono ipotizzate tre cause principali.
+
+\subsection{False Sharing (Condivisione Falsa)}\label{sec:false_sharing}
+    È il problema principale di questa implementazione. Nel codice, la matrice dei risultati è strutturata in modo che i contatori usati dai diversi thread per uno stesso intervallo (indicizzati con \texttt{local\_histograms[bin][tid]}) si trovino posizionati uno accanto all'altro nella memoria fisica. Poiché il processore non legge la memoria un singolo dato alla volta, ma lavora "a blocchi" (le cosiddette linee di cache), i contatori di thread diversi finiscono inevitabilmente per condividere lo stesso blocco. Di conseguenza, ogni volta che un core aggiorna il contatore relativo al thread che sta eseguendo in quel momento, il protocollo di coerenza della cache considera "invalidato" l'intero blocco di memoria per tutti gli altri core. Questo comporta che i processori si ostacolano a vicenda, invalidandosi i dati e costringendosi a ricaricare continuamente le informazioni dalla memoria centrale, che è molto più lenta, azzerando di fatto i benefici della parallelizzazione.
+    
+    \subsection{Saturazione della Memory Bandwidth}\label{sec:memory_bandwidth} Ogni thread esegue una semplice lettura, un controllo e una somma, ma richiede di scorrere un array di dimensione notevole. Aumentando il numero di thread, aumentano le richieste simultanee di lettura verso la memoria centrale. Tuttavia esiste un limite strutturale: la \textit{Memory Bandwidth} (banda passante), ovvero la quantità massima di dati che il bus di sistema può trasferire dalla RAM ai processori nell'unità di tempo. Una volta saturata tale capacità, i processori sono costretti a mettersi in attesa che i dati arrivino per poter continuare a lavorare. In questo scenario, aggiungere ulteriori thread diventa inutile: la velocità complessiva del programma non dipende più dalla potenza di calcolo a nostra disposizione, ma da quanto velocemente la memoria riesce a fornire le informazioni su cui operare.
+    
+    \subsection{Oversubscription e Context Switch}\label{sec:oversubscription} La nostra macchina di test dispone di soli 8 core fisici, il che significa che già superando gli 8 thread chiediamo al sistema di gestire più processi di quante siano le unità calcolo reali (oversubscription). Guardando i dati, notiamo però un fenomeno interessante: le prestazioni continuano a migliorare fino a circa 512 thread, per poi peggiorare nuovamente fino a 4096. Questo accade perché l'algoritmo utilizzato introduce frequenti cicli di stallo causati dalla latenza di accesso alla memoria principale. Avere un numero elevato di thread a disposizione aiuta il processore a evitare queste attese: appena un thread si blocca, la CPU lo mette in pausa e ne avvia un altro. Tuttavia, questo "trucco" ha un limite fisico. Nel caso limite di 4096 thread, il sistema operativo spende più tempo ad alternare i thread che a eseguire calcoli utili, provocando un nuovo peggioramento delle prestazioni.
+
+\clearpage
+\section{Strategia di ottimizzazione e benchmark comparativo}
+
+Le ottimizzazioni successive mirano a correggere le inefficienze ipotizzate nella Sezione \ref{sec:analysis}, modificando l'allocazione in memoria della matrice locale.
+
+\subsection{Prima Ottimizzazione: Trasposizione degli Indici (v2)}
+Per ridurre il \textit{False Sharing} (Sez. \ref{sec:false_sharing}), si è trasposta la matrice usando l'indicizzazione \newline \texttt{local\_histograms[tid][bin]}. In C, questo fa sì che ogni thread scriva su una riga di memoria dedicata e contigua di $7 \times 4 = 28$ byte.
+
+I grafici (Figure \ref{fig:fig3} e \ref{fig:fig4}) relativi al dataset da $5 \cdot 10^8$ elementi mostrano l'efficacia della modifica: il tempo di esecuzione con 8 thread crolla dai $3.28$ secondi della versione base (v1) a $0.34$ secondi (v2). Tuttavia, poiché 28 byte non riempiono un'intera \textit{cache line} (64 byte), parte dei dati di thread diversi finisce ancora nello stesso blocco fisico, lasciando un residuo di \textit{False Sharing}.
+
+\subsection{Seconda ottimizzazione: Cache Line Padding (v3)}
+Per risolvere definitivamente il problema, la riga dedicata a ciascun thread è stata "allungata" (\textit{padding}) in modo da occupare esattamente un'intera \textit{cache line}:
+
+\begin{equation}
+\text{Padding} = 16 \text{ int} \times 4 \text{ byte/int} = 64 \text{ byte}
+\end{equation}
+
+I \textit{bin} in eccesso (dal 7 al 15) rimangono inutilizzati e fungono da cuscinetto. In questo modo si garantisce che i core non condividano mai lo stesso blocco di memoria. Come si nota in Figura \ref{fig:fig3}, questa ottimizzazione elimina il collo di bottiglia nei primi thread, portando a uno speedup corretto di $3.88$x per $64$ thread (0.058s).
+
+\subsection{Conferma del Memory Wall}
+Confrontando le tre versioni, si evince che lo \textit{speedup} massimo della v3 si assesta poco sotto il $4$x, senza crescere ulteriormente. 
+
+Questo dato conferma empiricamente quanto teorizzato in Sez. \ref{sec:memory_bandwidth}: per questo specifico algoritmo, il limite prestazionale non è la CPU, ma la \textit{Memory Bandwidth}. Una volta saturata la capacità di trasferimento dati dalla memoria centrale, aggiungere altri thread diventa inutile e causa solo ritardi aggiuntivi a causa dell'\textit{oversubscription} (Sez. \ref{sec:oversubscription}).
+
+\vspace{1cm}
+
+\begin{figure}[h!]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=\textwidth,
+            height=7.5cm,
+            title={Confronto Ottimizzazioni (Speedup) su Dataset $L = 5 \cdot 10^8$},
+            xlabel={Numero di Threads ($p$)},
+            ylabel={Speedup ($S(p)$)},
+            xmode=log,
+            log basis x=2,
+            xtick={1,4,16,64,256,1024,4096},
+            xticklabels={1,4,16,64,256,1024,4096},
+            ymin=0, ymax=5,
+            grid=both,
+            grid style={dashed, gray!30},
+            legend pos=north west,
+            legend style={font=\footnotesize},
+            mark size=1.5pt
+        ]
+        
+        % v1 - Baseline
+        \addplot[color=red, mark=square*] coordinates {
+            (1,1.000) (2,0.133) (4,0.100) (8,0.093) (16,0.112) (32,0.325) 
+            (64,1.038) (128,1.546) (256,2.408) (512,1.838) (1024,1.588) (2048,1.848) (4096,1.012)
+        };
+        \addlegendentry{v1 - Base \texttt{[bin][tid]}}
+
+        % v2 - Trasposta
+        \addplot[color=orange, mark=triangle*] coordinates {
+            (1,1.000) (2,0.581) (4,0.344) (8,0.746) (16,1.388) (32,2.008) 
+            (64,3.077) (128,3.573) (256,3.490) (512,3.529) (1024,3.166) (2048,3.036) (4096,2.407)
+        };
+        \addlegendentry{v2 - Trasposta \texttt{[tid][bin]}}
+
+        % v3 - Padding
+        \addplot[color=green!60!black, mark=diamond*] coordinates {
+            (1,1.000) (2,1.492) (4,2.682) (8,3.380) (16,3.348) (32,3.454) 
+            (64,3.879) (128,3.663) (256,3.568) (512,3.334) (1024,2.978) (2048,2.719) (4096,2.089)
+        };
+        \addlegendentry{v3 - Padding 64 byte}
+
+        \addplot[color=black, dashed, thick, domain=1:4096] {1};
+        
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Confronto dello Speedup tra l'implementazione base e le due strategie di ottimizzazione della cache.}
+    \label{fig:fig3}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=\textwidth,
+            height=7.5cm,
+            title={Confronto Ottimizzazioni (Tempi) su Dataset $L = 5 \cdot 10^8$},
+            xlabel={Numero di Threads ($p$)},
+            ylabel={Tempo Totale (s) - Scala Log},
+            xmode=log,
+            log basis x=2,
+            ymode=log,
+            xtick={1,4,16,64,256,1024,4096},
+            xticklabels={1,4,16,64,256,1024,4096},
+            grid=both,
+            grid style={dashed, gray!30},
+            legend pos=north east,
+            legend style={font=\footnotesize},
+            mark size=1.5pt
+        ]
+        
+        % v1 - Baseline
+        \addplot[color=red, mark=square*] coordinates {
+            (1,0.307313) (2,2.306386) (4,3.076326) (8,3.286857) (16,2.750841) 
+            (32,0.946994) (64,0.296017) (128,0.198823) (256,0.127626) (512,0.167202) (1024,0.193526) (2048,0.166287) (4096,0.303640)
+        };
+        \addlegendentry{v1 - Base}
+
+        % v2 - Trasposta
+        \addplot[color=orange, mark=triangle*] coordinates {
+            (1,0.254618) (2,0.438607) (4,0.741010) (8,0.341459) (16,0.183386) 
+            (32,0.126831) (64,0.082751) (128,0.071262) (256,0.072965) (512,0.072151) (1024,0.080435) (2048,0.083863) (4096,0.105796)
+        };
+        \addlegendentry{v2 - Trasposta}
+
+        % v3 - Padding
+        \addplot[color=green!60!black, mark=diamond*] coordinates {
+            (1,0.225985) (2,0.151499) (4,0.084247) (8,0.066867) (16,0.067491) 
+            (32,0.065430) (64,0.058259) (128,0.061688) (256,0.063335) (512,0.067788) (1024,0.075895) (2048,0.083107) (4096,0.108194)
+        };
+        \addlegendentry{v3 - Padding 64 byte}
+
+        \end{axis}
+    \end{tikzpicture}
+    \caption{L'implementazione v3 annulla il ritardo nei primi cicli e restituisce l'andamento discendente atteso, fino allo stallo fisiologico per saturazione hardware.}
+    \label{fig:fig4}
+\end{figure}
+
+\end{document}
+
