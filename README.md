@@ -9,12 +9,12 @@ Le tre versioni analizzano l'impatto del layout di memoria e del **false sharing
 
 | File / Cartella | Descrizione |
 | :--- | :--- |
-| `main.c` | **Versione Base (v1)** — Layout `[bin][tid]`. Soffre gravemente di false sharing. Compatibile con tutti i compilatori C standard (non fa uso di VLA). |
-| `main2.c` | **Versione Trasposta (v2)** — Layout `[tid][bin]`. Riduce il false sharing disponendo i dati in modo consecutivo per thread. |
-| `main3.c` | **Versione Padded (v3)** — Layout `[tid][PADDED_BINS=16]`. Risolve completamente il false sharing allineando ogni riga della matrice locale a 64 byte (dimensione tipica di una cache line) usando una singola allocazione bidimensionale padded. |
+| `src/main.c` | **Versione Base (v1)** — Layout `[bin][tid]`. Soffre gravemente di false sharing. Compatibile con tutti i compilatori C standard (non fa uso di VLA). |
+| `src/main2.c` | **Versione Trasposta (v2)** — Layout `[tid][bin]`. Riduce il false sharing disponendo i dati in modo consecutivo per thread. |
+| `src/main3.c` | **Versione Padded (v3)** — Layout `[tid][PADDED_BINS=16]`. Risolve completamente il false sharing allineando ogni riga della matrice locale a 64 byte (dimensione tipica di una cache line) usando una singola allocazione bidimensionale padded. |
 | `run_all.sh` | Script bash che automatizza compilazione ed esecuzione dei benchmark, salvando i report in `risultati.txt`. |
-| `domanda1.md` | Risposte testuali ed analisi teorica delle parti omesse nello scheletro del challenge. |
-| `main.tex` | Sorgente LaTeX per la generazione della relazione finale (con grafici e tabelle). |
+| `doc/domanda1.md` | Risposte testuali ed analisi teorica delle parti omesse nello scheletro del challenge. |
+| `report/main.tex` | Sorgente LaTeX per la generazione della relazione finale (con grafici e tabelle). |
 
 ---
 
@@ -59,7 +59,7 @@ cd "/mnt/c/Users/loren/Documents/AntiGravity Projects/challenge2"
 ```
 *(Sostituisci `loren` con il tuo nome utente effettivo di Windows se diverso).*
 
-Per verificare di essere nella cartella giusta, digita `ls` e premi Invio: dovresti vedere la lista dei file del progetto (`main.c`, `run_all.sh`, ecc.).
+Per verificare di essere nella cartella giusta, digita `ls` e premi Invio: dovresti vedere la lista dei file del progetto (`src`, `report`, `run_all.sh`, ecc.).
 
 ### 4. Esecuzione del Benchmark
 
@@ -71,20 +71,20 @@ Per verificare di essere nella cartella giusta, digita `ls` e premi Invio: dovre
    ```bash
    ./run_all.sh
    ```
-3. Lo script compilerà i tre file sorgente (`main.c`, `main2.c`, `main3.c`) con ottimizzazioni aggressive (`-O3`) e il supporto OpenMP (`-fopenmp`), dopodiché avvierà i test per ogni dimensione del dataset ed ogni conteggio di thread.
+3. Lo script compilerà i tre file sorgente (`src/main.c`, `src/main2.c`, `src/main3.c`) con ottimizzazioni aggressive (`-O3`) e il supporto OpenMP (`-fopenmp`), dopodiché avvierà i test per ogni dimensione del dataset ed ogni conteggio di thread.
 4. I risultati verranno stampati a video in tempo reale e salvati automaticamente nel file **`risultati.txt`**.
 
 ---
 
 ## Analisi Tecnica ed Ottimizzazioni Apportate
 
-### 1. Rimozione di VLA (Variable-Length Arrays) in `main.c`
+### 1. Rimozione di VLA (Variable-Length Arrays) in `src/main.c`
 Nello scheletro originario veniva utilizzata una sintassi del tipo `int (*lh)[nt] = calloc(...)` che fa uso di VLA (Variable-Length Arrays). Tale costrutto non è universalmente supportato (ad esempio è opzionale nello standard C11 e rimosso/non supportato da compilatori come MSVC su Windows).
-La versione `main.c` è stata riscritta utilizzando un'allocazione lineare monodimensionale standard `int *lh = calloc(NUM_BINS * nt, sizeof(int))` indicizzata tramite formula `lh[bin * nt + tid]`. Questo garantisce massima portabilità e aderenza agli standard C industriali.
+La versione `src/main.c` è stata riscritta utilizando un'allocazione lineare monodimensionale standard `int *lh = calloc(NUM_BINS * nt, sizeof(int))` indicizzata tramite formula `lh[bin * nt + tid]`. Questo garantisce massima portabilità e aderenza agli standard C industriali.
 
-### 2. Ottimizzazione di `main3.c` (Cache Line Padding)
+### 2. Ottimizzazione di `src/main3.c` (Cache Line Padding)
 Per eliminare il false sharing, ogni riga di accumulazione associata a ciascun thread deve risiedere su una cache line differente (tipicamente 64 byte su architetture moderne, pari a 16 numeri interi di 4 byte).
-Invece di ricorrere a cicli inefficienti di `malloc` e `calloc` per ogni singolo thread (che introducono un elevato overhead a causa delle chiamate ripetute all'allocatore di sistema per thread elevati), `main3.c` alloca la memoria di tutti i thread in un'unica operazione contigua:
+Invece di ricorrere a cicli inefficienti di `malloc` e `calloc` per ogni singolo thread (che introducono un elevato overhead a causa delle chiamate ripetute all'allocatore di sistema per thread elevati), `src/main3.c` alloca la memoria di tutti i thread in un'unica operazione contigua:
 ```c
 int (*lh)[PADDED_BINS] = calloc(nt, PADDED_BINS * sizeof(int));
 ```

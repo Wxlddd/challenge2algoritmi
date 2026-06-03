@@ -61,3 +61,13 @@ histogram3_omp
 v1
 v2
 v3
+
+# file ausiliari di LaTeX nella cartella report
+report/*.aux
+report/*.log
+report/*.fls
+report/*.synctex.gz
+report/*.fdb_latexmk
+report/*.pdf
+report/*.toc
+report/*.out

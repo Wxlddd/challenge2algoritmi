@@ -5,9 +5,9 @@ CC="gcc"
 FLAGS="-O3 -fopenmp"
 
 echo "Compiling..."
-$CC $FLAGS main.c  -o v1 || { echo "Compile error: main.c";  exit 1; }
-$CC $FLAGS main2.c -o v2 || { echo "Compile error: main2.c"; exit 1; }
-$CC $FLAGS main3.c -o v3 || { echo "Compile error: main3.c"; exit 1; }
+$CC $FLAGS src/main.c  -o v1 || { echo "Compile error: main.c";  exit 1; }
+$CC $FLAGS src/main2.c -o v2 || { echo "Compile error: main2.c"; exit 1; }
+$CC $FLAGS src/main3.c -o v3 || { echo "Compile error: main3.c"; exit 1; }
 echo "Done."
 
 {
