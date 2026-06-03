@@ -68,6 +68,5 @@ report/*.log
 report/*.fls
 report/*.synctex.gz
 report/*.fdb_latexmk
-report/*.pdf
 report/*.toc
 report/*.out
