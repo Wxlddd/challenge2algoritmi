@@ -52,10 +52,10 @@ Nel terminale di Ubuntu (WSL) aperto, digita i seguenti comandi uno per uno prem
 
 ### 3. Posizionarsi nella directory del progetto
 
-Da WSL è possibile accedere direttamente ai file di Windows. Se hai scaricato la repository in una cartella di Windows (ad esempio in `Documents\AntiGravity Projects\challenge2`), puoi posizionarti lì dentro digitando nel terminale WSL:
+Da WSL è possibile accedere direttamente ai file di Windows. Se hai scaricato la repository in una cartella di Windows (ad esempio in `Documents\VSCodeProjects\challenge2`), puoi posizionarti lì dentro digitando nel terminale WSL:
 
 ```bash
-cd "/mnt/c/Users/user/Documents/AntiGravity Projects/challenge2"
+cd "/mnt/c/Users/user/Documents/VSCodeProjects/challenge2"
 ```
 
 Per verificare di essere nella cartella giusta, digita `ls` e premi Invio: dovresti vedere la lista dei file del progetto (`src`, `report`, `run_all.sh`, ecc.).
