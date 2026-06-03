@@ -18,7 +18,7 @@ Le tre versioni analizzano l'impatto del layout di memoria e del **false sharing
 
 ---
 
-## Guida alla Riproducibilità dei Risultati (Passo dopo Passo)
+## Guida alla Riproducibilità dei Risultati
 
 Per riprodurre fedelmente i benchmark di scaling e i tempi presentati nella relazione, **è fortemente consigliato l'utilizzo di Linux tramite WSL** (Windows Subsystem for Linux), in quanto lo scheduler dei thread e le performance di OpenMP sotto Windows nativo variano in modo significativo rispetto all'ambiente Linux di riferimento.
 
@@ -74,18 +74,3 @@ Per verificare di essere nella cartella giusta, digita `ls` e premi Invio: dovre
 3. Lo script compilerà i tre file sorgente (`src/main.c`, `src/main2.c`, `src/main3.c`) con ottimizzazioni aggressive (`-O3`) e il supporto OpenMP (`-fopenmp`), dopodiché avvierà i test per ogni dimensione del dataset ed ogni conteggio di thread.
 4. I risultati verranno stampati a video in tempo reale e salvati automaticamente nel file **`risultati.txt`**.
 
----
-
-## Analisi Tecnica ed Ottimizzazioni Apportate
-
-### 1. Rimozione di VLA (Variable-Length Arrays) in `src/main.c`
-Nello scheletro originario veniva utilizzata una sintassi del tipo `int (*lh)[nt] = calloc(...)` che fa uso di VLA (Variable-Length Arrays). Tale costrutto non è universalmente supportato (ad esempio è opzionale nello standard C11 e rimosso/non supportato da compilatori come MSVC su Windows).
-La versione `src/main.c` è stata riscritta utilizando un'allocazione lineare monodimensionale standard `int *lh = calloc(NUM_BINS * nt, sizeof(int))` indicizzata tramite formula `lh[bin * nt + tid]`. Questo garantisce massima portabilità e aderenza agli standard C industriali.
-
-### 2. Ottimizzazione di `src/main3.c` (Cache Line Padding)
-Per eliminare il false sharing, ogni riga di accumulazione associata a ciascun thread deve risiedere su una cache line differente (tipicamente 64 byte su architetture moderne, pari a 16 numeri interi di 4 byte).
-Invece di ricorrere a cicli inefficienti di `malloc` e `calloc` per ogni singolo thread (che introducono un elevato overhead a causa delle chiamate ripetute all'allocatore di sistema per thread elevati), `src/main3.c` alloca la memoria di tutti i thread in un'unica operazione contigua:
-```c
-int (*lh)[PADDED_BINS] = calloc(nt, PADDED_BINS * sizeof(int));
-```
-Poiché `PADDED_BINS` è impostato a `16` (ossia 64 byte), ogni riga occupa esattamente una cache line intera. Il blocco contiguo così allocato impedisce che righe adiacenti condividano la stessa linea fisica, eliminando il false sharing con zero overhead di allocazione.
