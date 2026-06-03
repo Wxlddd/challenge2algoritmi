@@ -1,4 +1,3 @@
-
 \documentclass[a4paper,11pt]{article}
 
 \usepackage[utf8]{inputenc}
@@ -35,13 +34,14 @@ Le variabili necessarie all'esecuzione sono state definite e allocate come segue
 
 \begin{itemize}
     \item \texttt{data} e \texttt{length}: L'array di input contenente i caratteri da analizzare e la sua grandezza, utilizzata come limite superiore (\textit{bound}) per il ciclo parallelo. Nei test successivi, il buffer viene allocato dinamicamente in base alle dimensioni del \textit{dataset} e popolato tramite una funzione pseudocasuale controllata da un \textit{seed} fisso.
-   \item \texttt{total\_threads}: Il numero di thread da impiegare. Per condurre i test di scalabilità, questo valore è stato imposto iterativamente via codice (tramite la funzione \texttt{omp\_set\_num\_threads()}) scorrendo un array di potenze di due. Tale valore definisce inoltre l'upper bound per il ciclo della riduzione seriale finale.
+   \item \texttt{total\_threads}: Il numero di thread da impiegare. Per condurre i test di scalabilità, questo valore è stato imposto iterativamente via codice (tramite la funzione \texttt{omp\_set\_num\allowbreak\_threads()}) scorrendo un array di potenze di due. Tale valore definisce inoltre l'upper bound per il ciclo della riduzione seriale finale.
     \item \texttt{local\_histograms} e \texttt{histogram}: Le variabili necessarie per tenere traccia del numero di frequenze. È necessario inizializzare esplicitamente l'array globale \texttt{histogram} a zero per eliminare valori indefiniti preesistenti in memoria. Per la matrice dei contatori locali, si è implementata l'allocazione dinamica:
 \end{itemize}
 
 \begin{lstlisting}[language=C, numbers=none, frame=single, basicstyle=\ttfamily\small]
 int num_threads = omp_get_max_threads();
-int (*local_histograms)[num_threads] = calloc(NUM_BINS, num_threads * sizeof(int));
+int (*local_histograms)[num_threads] = 
+    calloc(NUM_BINS, num_threads * sizeof(int));
 int histogram[NUM_BINS] = {0};
 \end{lstlisting}
 
@@ -81,6 +81,8 @@ double par    = t_mid - t_start;
 double red    = t_end - t_mid;
 \end{lstlisting}
 
+\textit{Nota sulla portabilità:} Nello scheletro del codice descritto sopra, l'allocazione tramite puntatore a VLA (\texttt{int (*local\_histograms)[num\_threads]}) è stata successivamente rifattorizzata nei file sorgente effettivi in un array monodimensionale lineare (\texttt{int *lh = calloc(NUM\_BINS * nt, sizeof(int))}) indicizzato come \texttt{lh[bin * nt + tid]}. Questa scelta progettuale garantisce la compatibilità del codice con qualsiasi compilatore C standard (incluso MSVC su Windows), che potrebbe non supportare i Variable-Length Arrays (introdotti come opzionali a partire dallo standard C11).
+
 Analizzando le misurazioni isolate (\texttt{red}), è emerso che il tempo necessario per lo svolgimento del ciclo di riduzione seriale finale (i due cicli \texttt{for} annidati) risulta essere ordini di grandezza inferiore rispetto a quello impiegato per la porzione parallela e del tutto trascurabile indipendentemente dalla dimensione dell'array di input. Per questo motivo, nelle sezioni successive l'analisi della performance è incentrata sulla sola porzione parallela.
 
 
@@ -91,11 +93,13 @@ Analizzando le misurazioni isolate (\texttt{red}), è emerso che il tempo necess
     \item Numero dei Core fisici/logici:  8; 
     \item Thread(s) per core: 1; 
     \item Versione di OpenMP utilizzata: 201511
-    \item Caches :\newline
-  L1d:                       384 KiB (8 istanze);\newline
-  L1i:                       512 KiB (8 istanze);\newline
-  L2:                        20 MiB (8 istanze);\newline
-  L3:                        12 MiB (1 istanza);\newline
+    \item Caches:
+    \begin{itemize}
+        \item L1d: 384 KiB (8 istanze);
+        \item L1i: 512 KiB (8 istanze);
+        \item L2: 20 MiB (8 istanze);
+        \item L3: 12 MiB (1 istanza);
+    \end{itemize}
 \end{itemize}
 \newpage
 
@@ -124,67 +128,67 @@ Analizzando le misurazioni isolate (\texttt{red}), è emerso che il tempo necess
     \endlastfoot
 
     \textbf{10\,000\,000} 
-    & 1    & 0.005880 & 0.005880 & 0.000000 & 1.000 & 1.0000 \\
-    & 2    & 0.035507 & 0.035507 & 0.000000 & 0.166 & 0.0828 \\
-    & 4    & 0.053110 & 0.053110 & 0.000000 & 0.111 & 0.0277 \\
-    & 8    & 0.043321 & 0.043321 & 0.000000 & 0.136 & 0.0170 \\
-    & 16   & 0.031730 & 0.031729 & 0.000000 & 0.185 & 0.0116 \\
-    & 32   & 0.026511 & 0.026511 & 0.000000 & 0.222 & 0.0069 \\
-    & 64   & 0.016189 & 0.016189 & 0.000000 & 0.363 & 0.0057 \\
-    & 128  & 0.011943 & 0.011942 & 0.000000 & 0.492 & 0.0038 \\
-    & 256  & 0.012901 & 0.012901 & 0.000000 & 0.456 & 0.0018 \\
-    & 512  & 0.013137 & 0.013137 & 0.000000 & 0.448 & 0.0009 \\
-    & 1024 & 0.028169 & 0.028169 & 0.000000 & 0.209 & 0.0002 \\
-    & 2048 & 0.036932 & 0.036932 & 0.000000 & 0.159 & 0.0001 \\
-    & 4096 & 0.063945 & 0.063945 & 0.000000 & 0.092 & 0.0000 \\
+    & 1    & 0.014255 & 0.014255 & 0.000000 & 1.000 & 1.0000 \\
+    & 2    & 0.017683 & 0.017682 & 0.000001 & 0.806 & 0.4031 \\
+    & 4    & 0.043692 & 0.043692 & 0.000001 & 0.326 & 0.0816 \\
+    & 8    & 0.056401 & 0.056401 & 0.000001 & 0.253 & 0.0316 \\
+    & 16   & 0.042233 & 0.042232 & 0.000000 & 0.338 & 0.0211 \\
+    & 32   & 0.023287 & 0.023287 & 0.000000 & 0.612 & 0.0191 \\
+    & 64   & 0.019160 & 0.019160 & 0.000000 & 0.744 & 0.0116 \\
+    & 128  & 0.025255 & 0.025255 & 0.000000 & 0.564 & 0.0044 \\
+    & 256  & 0.016446 & 0.016446 & 0.000000 & 0.867 & 0.0034 \\
+    & 512  & 0.017736 & 0.017736 & 0.000000 & 0.804 & 0.0016 \\
+    & 1024 & 0.047373 & 0.047373 & 0.000000 & 0.301 & 0.0003 \\
+    & 2048 & 0.059428 & 0.059428 & 0.000000 & 0.240 & 0.0001 \\
+    & 4096 & 0.104364 & 0.104364 & 0.000000 & 0.137 & 0.0000 \\
     \midrule
     
     \textbf{50\,000\,000} 
-    & 1    & 0.031097 & 0.031097 & 0.000000 & 1.000 & 1.0000 \\
-    & 2    & 0.132178 & 0.132178 & 0.000000 & 0.235 & 0.1176 \\
-    & 4    & 0.338721 & 0.338721 & 0.000000 & 0.092 & 0.0230 \\
-    & 8    & 0.498342 & 0.498341 & 0.000000 & 0.062 & 0.0078 \\
-    & 16   & 0.414824 & 0.414823 & 0.000000 & 0.075 & 0.0047 \\
-    & 32   & 0.179754 & 0.179754 & 0.000000 & 0.173 & 0.0054 \\
-    & 64   & 0.104953 & 0.104953 & 0.000000 & 0.296 & 0.0046 \\
-    & 128  & 0.046515 & 0.046514 & 0.000000 & 0.669 & 0.0052 \\
-    & 256  & 0.044367 & 0.044366 & 0.000000 & 0.701 & 0.0027 \\
-    & 512  & 0.035178 & 0.035177 & 0.000000 & 0.884 & 0.0017 \\
-    & 1024 & 0.036617 & 0.036616 & 0.000000 & 0.849 & 0.0008 \\
-    & 2048 & 0.072763 & 0.072763 & 0.000000 & 0.427 & 0.0002 \\
-    & 4096 & 0.057263 & 0.057263 & 0.000000 & 0.543 & 0.0001 \\
+    & 1    & 0.047065 & 0.047065 & 0.000000 & 1.000 & 1.0000 \\
+    & 2    & 0.165130 & 0.165130 & 0.000000 & 0.285 & 0.1425 \\
+    & 4    & 0.384445 & 0.384445 & 0.000000 & 0.122 & 0.0306 \\
+    & 8    & 0.476626 & 0.476626 & 0.000000 & 0.099 & 0.0123 \\
+    & 16   & 0.229558 & 0.229558 & 0.000000 & 0.205 & 0.0128 \\
+    & 32   & 0.119045 & 0.119045 & 0.000000 & 0.395 & 0.0124 \\
+    & 64   & 0.068317 & 0.068316 & 0.000000 & 0.689 & 0.0108 \\
+    & 128  & 0.038246 & 0.038246 & 0.000000 & 1.231 & 0.0096 \\
+    & 256  & 0.060540 & 0.060540 & 0.000000 & 0.777 & 0.0030 \\
+    & 512  & 0.047699 & 0.047699 & 0.000000 & 0.987 & 0.0019 \\
+    & 1024 & 0.056247 & 0.056247 & 0.000000 & 0.837 & 0.0008 \\
+    & 2048 & 0.085486 & 0.085486 & 0.000000 & 0.551 & 0.0003 \\
+    & 4096 & 0.084106 & 0.084106 & 0.000000 & 0.560 & 0.0001 \\
     \midrule
     
     \textbf{100\,000\,000} 
-    & 1    & 0.065111 & 0.065110 & 0.000001 & 1.000 & 1.0000 \\
-    & 2    & 0.475995 & 0.475995 & 0.000001 & 0.137 & 0.0684 \\
-    & 4    & 0.660241 & 0.660241 & 0.000000 & 0.099 & 0.0247 \\
-    & 8    & 1.003032 & 1.003031 & 0.000000 & 0.065 & 0.0081 \\
-    & 16   & 0.808979 & 0.808978 & 0.000001 & 0.080 & 0.0050 \\
-    & 32   & 0.380600 & 0.380599 & 0.000000 & 0.171 & 0.0053 \\
-    & 64   & 0.186235 & 0.186235 & 0.000000 & 0.350 & 0.0055 \\
-    & 128  & 0.077259 & 0.077259 & 0.000000 & 0.843 & 0.0066 \\
-    & 256  & 0.080342 & 0.080342 & 0.000000 & 0.810 & 0.0032 \\
-    & 512  & 0.048536 & 0.048536 & 0.000000 & 1.341 & 0.0026 \\
-    & 1024 & 0.124500 & 0.124500 & 0.000000 & 0.523 & 0.0005 \\
-    & 2048 & 0.088913 & 0.088912 & 0.000000 & 0.732 & 0.0004 \\
-    & 4096 & 0.114118 & 0.114117 & 0.000000 & 0.571 & 0.0001 \\
+    & 1    & 0.067974 & 0.067974 & 0.000000 & 1.000 & 1.0000 \\
+    & 2    & 0.378926 & 0.378926 & 0.000000 & 0.179 & 0.0897 \\
+    & 4    & 0.452371 & 0.452371 & 0.000000 & 0.150 & 0.0376 \\
+    & 8    & 1.151962 & 1.151962 & 0.000000 & 0.059 & 0.0074 \\
+    & 16   & 0.946152 & 0.946152 & 0.000000 & 0.072 & 0.0045 \\
+    & 32   & 0.422488 & 0.422488 & 0.000000 & 0.161 & 0.0050 \\
+    & 64   & 0.119128 & 0.119128 & 0.000000 & 0.571 & 0.0089 \\
+    & 128  & 0.100488 & 0.100487 & 0.000000 & 0.676 & 0.0053 \\
+    & 256  & 0.065041 & 0.065041 & 0.000000 & 1.045 & 0.0041 \\
+    & 512  & 0.077540 & 0.077539 & 0.000000 & 0.877 & 0.0017 \\
+    & 1024 & 0.070479 & 0.070478 & 0.000000 & 0.964 & 0.0009 \\
+    & 2048 & 0.094874 & 0.094874 & 0.000000 & 0.716 & 0.0003 \\
+    & 4096 & 0.101736 & 0.101735 & 0.000001 & 0.668 & 0.0002 \\
     \midrule
     
     \textbf{500\,000\,000} 
-    & 1    & 0.309843 & 0.309843 & 0.000001 & 1.000 & 1.0000 \\
-    & 2    & 2.330853 & 2.330853 & 0.000000 & 0.133 & 0.0665 \\
-    & 4    & 3.347264 & 3.347263 & 0.000000 & 0.093 & 0.0231 \\
-    & 8    & 4.853035 & 4.853035 & 0.000000 & 0.064 & 0.0080 \\
-    & 16   & 4.036146 & 4.036146 & 0.000001 & 0.077 & 0.0048 \\
-    & 32   & 1.970446 & 1.970446 & 0.000000 & 0.157 & 0.0049 \\
-    & 64   & 0.600725 & 0.600724 & 0.000000 & 0.516 & 0.0081 \\
-    & 128  & 0.263330 & 0.263330 & 0.000001 & 1.177 & 0.0092 \\
-    & 256  & 0.297436 & 0.297435 & 0.000000 & 1.042 & 0.0041 \\
-    & 512  & 0.225500 & 0.225500 & 0.000000 & 1.374 & 0.0027 \\
-    & 1024 & 0.183772 & 0.183771 & 0.000000 & 1.686 & 0.0016 \\
-    & 2048 & 0.213629 & 0.213629 & 0.000000 & 1.450 & 0.0007 \\
-    & 4096 & 0.253271 & 0.253271 & 0.000000 & 1.223 & 0.0003 \\
+    & 1    & 0.233490 & 0.233489 & 0.000000 & 1.000 & 1.0000 \\
+    & 2    & 1.829699 & 1.829699 & 0.000000 & 0.128 & 0.0638 \\
+    & 4    & 2.901702 & 2.901702 & 0.000000 & 0.080 & 0.0201 \\
+    & 8    & 3.105532 & 3.105531 & 0.000001 & 0.075 & 0.0094 \\
+    & 16   & 3.821244 & 3.821244 & 0.000000 & 0.061 & 0.0038 \\
+    & 32   & 1.624393 & 1.624393 & 0.000000 & 0.144 & 0.0045 \\
+    & 64   & 0.375921 & 0.375921 & 0.000000 & 0.621 & 0.0097 \\
+    & 128  & 0.159692 & 0.159692 & 0.000000 & 1.462 & 0.0114 \\
+    & 256  & 0.327848 & 0.327848 & 0.000000 & 0.712 & 0.0028 \\
+    & 512  & 0.207262 & 0.207262 & 0.000000 & 1.127 & 0.0022 \\
+    & 1024 & 0.158066 & 0.158065 & 0.000000 & 1.477 & 0.0014 \\
+    & 2048 & 0.208734 & 0.208733 & 0.000000 & 1.119 & 0.0005 \\
+    & 4096 & 0.163677 & 0.163676 & 0.000000 & 1.427 & 0.0003 \\
 \end{longtable}
 \end{center}
 
@@ -210,26 +214,26 @@ Analizzando le misurazioni isolate (\texttt{red}), è emerso che il tempo necess
         ]
         
         \addplot[color=blue, mark=square*] coordinates {
-            (1,1.000) (2,0.166) (4,0.111) (8,0.136) (16,0.185) (32,0.222) 
-            (64,0.363) (128,0.492) (256,0.456) (512,0.448) (1024,0.209) (2048,0.159) (4096,0.092)
+            (1,1.000) (2,0.806) (4,0.326) (8,0.253) (16,0.338) (32,0.612) 
+            (64,0.744) (128,0.564) (256,0.867) (512,0.804) (1024,0.301) (2048,0.240) (4096,0.137)
         };
         \addlegendentry{$L = 10^7$}
 
         \addplot[color=red, mark=triangle*] coordinates {
-            (1,1.000) (2,0.235) (4,0.092) (8,0.062) (16,0.075) (32,0.173) 
-            (64,0.296) (128,0.669) (256,0.701) (512,0.884) (1024,0.849) (2048,0.427) (4096,0.543)
+            (1,1.000) (2,0.285) (4,0.122) (8,0.099) (16,0.205) (32,0.395) 
+            (64,0.689) (128,1.231) (256,0.777) (512,0.987) (1024,0.837) (2048,0.551) (4096,0.560)
         };
         \addlegendentry{$L = 5 \cdot 10^7$}
 
         \addplot[color=green!60!black, mark=diamond*] coordinates {
-            (1,1.000) (2,0.137) (4,0.099) (8,0.065) (16,0.080) (32,0.171) 
-            (64,0.350) (128,0.843) (256,0.810) (512,1.341) (1024,0.523) (2048,0.732) (4096,0.571)
+            (1,1.000) (2,0.179) (4,0.150) (8,0.059) (16,0.072) (32,0.161) 
+            (64,0.571) (128,0.676) (256,1.045) (512,0.877) (1024,0.964) (2048,0.716) (4096,0.668)
         };
         \addlegendentry{$L = 10^8$}
 
         \addplot[color=orange, mark=*] coordinates {
-            (1,1.000) (2,0.133) (4,0.093) (8,0.064) (16,0.077) (32,0.157) 
-            (64,0.516) (128,1.177) (256,1.042) (512,1.374) (1024,1.686) (2048,1.450) (4096,1.223)
+            (1,1.000) (2,0.128) (4,0.080) (8,0.075) (16,0.061) (32,0.144) 
+            (64,0.621) (128,1.462) (256,0.712) (512,1.127) (1024,1.477) (2048,1.119) (4096,1.427)
         };
         \addlegendentry{$L = 5 \cdot 10^8$}
 
@@ -257,32 +261,32 @@ Analizzando le misurazioni isolate (\texttt{red}), è emerso che il tempo necess
             xticklabels={1,4,16,64,256,1024,4096},
             grid=both,
             grid style={dashed, gray!30},
-            legend pos=south east,
+            legend pos=north east,
             legend style={font=\footnotesize},
             mark size=1.5pt
         ]
         
         \addplot[color=blue, mark=square*] coordinates {
-            (1,0.005880) (2,0.035507) (4,0.053110) (8,0.043321) (16,0.031730) 
-            (32,0.026511) (64,0.016189) (128,0.011943) (256,0.012901) (512,0.013137) (1024,0.028169) (2048,0.036932) (4096,0.063945)
+            (1,0.014255) (2,0.017683) (4,0.043692) (8,0.056401) (16,0.042233) 
+            (32,0.023287) (64,0.019160) (128,0.025255) (256,0.016446) (512,0.017736) (1024,0.047373) (2048,0.059428) (4096,0.104364)
         };
         \addlegendentry{$L = 10^7$}
 
         \addplot[color=red, mark=triangle*] coordinates {
-            (1,0.031097) (2,0.132178) (4,0.338721) (8,0.498342) (16,0.414824) 
-            (32,0.179754) (64,0.104953) (128,0.046515) (256,0.044367) (512,0.035178) (1024,0.036617) (2048,0.072763) (4096,0.057263)
+            (1,0.047065) (2,0.165130) (4,0.384445) (8,0.476626) (16,0.229558) 
+            (32,0.119045) (64,0.068317) (128,0.038246) (256,0.060540) (512,0.047699) (1024,0.056247) (2048,0.085486) (4096,0.084106)
         };
         \addlegendentry{$L = 5 \cdot 10^7$}
 
         \addplot[color=green!60!black, mark=diamond*] coordinates {
-            (1,0.065111) (2,0.475995) (4,0.660241) (8,1.003032) (16,0.808979) 
-            (32,0.380600) (64,0.186235) (128,0.077259) (256,0.080342) (512,0.048536) (1024,0.124500) (2048,0.088913) (4096,0.114118)
+            (1,0.067974) (2,0.378926) (4,0.452371) (8,1.151962) (16,0.946152) 
+            (32,0.422488) (64,0.119128) (128,0.100488) (256,0.065041) (512,0.077540) (1024,0.070479) (2048,0.094874) (4096,0.101736)
         };
         \addlegendentry{$L = 10^8$}
 
         \addplot[color=orange, mark=*] coordinates {
-            (1,0.309843) (2,2.330853) (4,3.347264) (8,4.853035) (16,4.036146) 
-            (32,1.970446) (64,0.600725) (128,0.263330) (256,0.297436) (512,0.225500) (1024,0.183772) (2048,0.213629) (4096,0.253271)
+            (1,0.233490) (2,1.829699) (4,2.901702) (8,3.105532) (16,3.821244) 
+            (32,1.624393) (64,0.375921) (128,0.159692) (256,0.327848) (512,0.207262) (1024,0.158066) (2048,0.208734) (4096,0.163677)
         };
         \addlegendentry{$L = 5 \cdot 10^8$}
 
@@ -298,7 +302,7 @@ Analizzando i dati raccolti, emerge chiaramente che lo speedup non solo non ha u
 In base all'architettura del calcolatore, si sono ipotizzate tre cause principali.
 
 \subsection{False Sharing (Condivisione Falsa)}\label{sec:false_sharing}
-    È il problema principale di questa implementazione. Nel codice, la matrice dei risultati è strutturata in modo che i contatori usati dai diversi thread per uno stesso intervallo (indicizzati con \texttt{local\_histograms[bin][tid]}) si trovino posizionati uno accanto all'altro nella memoria fisica. Poiché il processore non legge la memoria un singolo dato alla volta, ma lavora "a blocchi" (le cosiddette linee di cache), i contatori di thread diversi finiscono inevitabilmente per condividere lo stesso blocco. Di conseguenza, ogni volta che un core aggiorna il contatore relativo al thread che sta eseguendo in quel momento, il protocollo di coerenza della cache considera "invalidato" l'intero blocco di memoria per tutti gli altri core. Questo comporta che i processori si ostacolano a vicenda, invalidandosi i dati e costringendosi a ricaricare continuamente le informazioni dalla memoria centrale, che è molto più lenta, azzerando di fatto i benefici della parallelizzazione.
+    È il problema principale di questa implementazione. Nel codice, la matrice dei risultati è strutturata in modo che i contatori usati dai diversi thread per uno stesso intervallo (indicizzati con \texttt{local\_histograms\allowbreak[bin]\allowbreak[tid]}) si trovino posizionati uno accanto all'altro nella memoria fisica. Poiché il processore non legge la memoria un singolo dato alla volta, ma lavora "a blocchi" (le cosiddette linee di cache), i contatori di thread diversi finiscono inevitabilmente per condividere lo stesso blocco. Di conseguenza, ogni volta che un core aggiorna il contatore relativo al thread che sta eseguendo in quel momento, il protocollo di coerenza della cache considera "invalidato" l'intero blocco di memoria per tutti gli altri core. Questo comporta che i processori si ostacolano a vicenda, invalidandosi i dati e costringendosi a ricaricare continuamente le informazioni dalla memoria centrale, che è molto più lenta, azzerando di fatto i benefici della parallelizzazione.
     
     \subsection{Saturazione della Memory Bandwidth}\label{sec:memory_bandwidth} Ogni thread esegue una semplice lettura, un controllo e una somma, ma richiede di scorrere un array di dimensione notevole. Aumentando il numero di thread, aumentano le richieste simultanee di lettura verso la memoria centrale. Tuttavia esiste un limite strutturale: la \textit{Memory Bandwidth} (banda passante), ovvero la quantità massima di dati che il bus di sistema può trasferire dalla RAM ai processori nell'unità di tempo. Una volta saturata tale capacità, i processori sono costretti a mettersi in attesa che i dati arrivino per poter continuare a lavorare. In questo scenario, aggiungere ulteriori thread diventa inutile: la velocità complessiva del programma non dipende più dalla potenza di calcolo a nostra disposizione, ma da quanto velocemente la memoria riesce a fornire le informazioni su cui operare.
     
@@ -310,7 +314,7 @@ In base all'architettura del calcolatore, si sono ipotizzate tre cause principal
 Le ottimizzazioni successive mirano a correggere le inefficienze ipotizzate nella Sezione \ref{sec:analysis}, modificando l'allocazione in memoria della matrice locale.
 
 \subsection{Prima Ottimizzazione: Trasposizione degli Indici (v2)}
-Per ridurre il \textit{False Sharing} (Sez. \ref{sec:false_sharing}), si è trasposta la matrice usando l'indicizzazione \newline \texttt{local\_histograms[tid][bin]}. In C, questo fa sì che ogni thread scriva su una riga di memoria dedicata e contigua di $7 \times 4 = 28$ byte.
+Per ridurre il \textit{False Sharing} (Sez. \ref{sec:false_sharing}), si è trasposta la matrice usando l'indicizzazione \texttt{local\_histograms\allowbreak[tid]\allowbreak[bin]}. In C, questo fa sì che ogni thread scriva su una riga di memoria dedicata e contigua di $7 \times 4 = 28$ byte.
 
 I grafici (Figure \ref{fig:fig3} e \ref{fig:fig4}) relativi al dataset da $5 \cdot 10^8$ elementi mostrano l'efficacia della modifica: il tempo di esecuzione con 8 thread crolla dai $3.28$ secondi della versione base (v1) a $0.34$ secondi (v2). Tuttavia, poiché 28 byte non riempiono un'intera \textit{cache line} (64 byte), parte dei dati di thread diversi finisce ancora nello stesso blocco fisico, lasciando un residuo di \textit{False Sharing}.
 
@@ -353,22 +357,22 @@ Questo dato conferma empiricamente quanto teorizzato in Sez. \ref{sec:memory_ban
         
         % v1 - Baseline
         \addplot[color=red, mark=square*] coordinates {
-            (1,1.000) (2,0.133) (4,0.100) (8,0.093) (16,0.112) (32,0.325) 
-            (64,1.038) (128,1.546) (256,2.408) (512,1.838) (1024,1.588) (2048,1.848) (4096,1.012)
+            (1,1.000) (2,0.128) (4,0.080) (8,0.075) (16,0.061) (32,0.144) 
+            (64,0.621) (128,1.462) (256,0.712) (512,1.127) (1024,1.477) (2048,1.119) (4096,1.427)
         };
         \addlegendentry{v1 - Base \texttt{[bin][tid]}}
 
         % v2 - Trasposta
         \addplot[color=orange, mark=triangle*] coordinates {
-            (1,1.000) (2,0.581) (4,0.344) (8,0.746) (16,1.388) (32,2.008) 
-            (64,3.077) (128,3.573) (256,3.490) (512,3.529) (1024,3.166) (2048,3.036) (4096,2.407)
+            (1,1.000) (2,0.475) (4,0.262) (8,0.387) (16,1.061) (32,1.732) 
+            (64,2.905) (128,2.649) (256,3.009) (512,3.617) (1024,3.241) (2048,3.118) (4096,1.862)
         };
         \addlegendentry{v2 - Trasposta \texttt{[tid][bin]}}
 
         % v3 - Padding
         \addplot[color=green!60!black, mark=diamond*] coordinates {
-            (1,1.000) (2,1.492) (4,2.682) (8,3.380) (16,3.348) (32,3.454) 
-            (64,3.879) (128,3.663) (256,3.568) (512,3.334) (1024,2.978) (2048,2.719) (4096,2.089)
+            (1,1.000) (2,1.231) (4,1.817) (8,2.256) (16,2.735) (32,3.205) 
+            (64,3.782) (128,3.882) (256,4.016) (512,3.728) (1024,3.571) (2048,2.883) (4096,2.450)
         };
         \addlegendentry{v3 - Padding 64 byte}
 
@@ -403,22 +407,22 @@ Questo dato conferma empiricamente quanto teorizzato in Sez. \ref{sec:memory_ban
         
         % v1 - Baseline
         \addplot[color=red, mark=square*] coordinates {
-            (1,0.307313) (2,2.306386) (4,3.076326) (8,3.286857) (16,2.750841) 
-            (32,0.946994) (64,0.296017) (128,0.198823) (256,0.127626) (512,0.167202) (1024,0.193526) (2048,0.166287) (4096,0.303640)
+            (1,0.233490) (2,1.829699) (4,2.901702) (8,3.105532) (16,3.821244) 
+            (32,1.624393) (64,0.375921) (128,0.159692) (256,0.327848) (512,0.207262) (1024,0.158066) (2048,0.208734) (4096,0.163677)
         };
         \addlegendentry{v1 - Base}
 
         % v2 - Trasposta
         \addplot[color=orange, mark=triangle*] coordinates {
-            (1,0.254618) (2,0.438607) (4,0.741010) (8,0.341459) (16,0.183386) 
-            (32,0.126831) (64,0.082751) (128,0.071262) (256,0.072965) (512,0.072151) (1024,0.080435) (2048,0.083863) (4096,0.105796)
+            (1,0.205731) (2,0.433256) (4,0.785337) (8,0.531943) (16,0.193902) 
+            (32,0.118751) (64,0.070808) (128,0.077661) (256,0.068371) (512,0.056880) (1024,0.063475) (2048,0.065985) (4096,0.110486)
         };
         \addlegendentry{v2 - Trasposta}
 
         % v3 - Padding
         \addplot[color=green!60!black, mark=diamond*] coordinates {
-            (1,0.225985) (2,0.151499) (4,0.084247) (8,0.066867) (16,0.067491) 
-            (32,0.065430) (64,0.058259) (128,0.061688) (256,0.063335) (512,0.067788) (1024,0.075895) (2048,0.083107) (4096,0.108194)
+            (1,0.205383) (2,0.166810) (4,0.113049) (8,0.091031) (16,0.075094) 
+            (32,0.064090) (64,0.054305) (128,0.052900) (256,0.051147) (512,0.055092) (1024,0.057512) (2048,0.071239) (4096,0.083816)
         };
         \addlegendentry{v3 - Padding 64 byte}
 
@@ -429,4 +433,3 @@ Questo dato conferma empiricamente quanto teorizzato in Sez. \ref{sec:memory_ban
 \end{figure}
 
 \end{document}
-
