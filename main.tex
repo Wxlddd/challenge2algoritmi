@@ -40,8 +40,7 @@ Le variabili necessarie all'esecuzione sono state definite e allocate come segue
 
 \begin{lstlisting}[language=C, numbers=none, frame=single, basicstyle=\ttfamily\small]
 int num_threads = omp_get_max_threads();
-int (*local_histograms)[num_threads] = 
-    calloc(NUM_BINS, num_threads * sizeof(int));
+int *local_histograms = calloc(NUM_BINS * num_threads, sizeof(int));
 int histogram[NUM_BINS] = {0};
 \end{lstlisting}
 
@@ -62,7 +61,7 @@ double t_start = omp_get_wtime(); // Avvio misurazione
         int alphabet_pos = (int)data[i] - 'a';
         if (alphabet_pos >= 0 && alphabet_pos < 26) {
             int bin = alphabet_pos / 4;
-            local_histograms[bin][tid]++;
+            local_histograms[bin * total_threads + tid]++;
         }
     }
 }
@@ -71,7 +70,7 @@ double t_mid = omp_get_wtime(); // Checkpoint intermedio
 // Riduzione seriale globale
 for (int b = 0; b < NUM_BINS; ++b) {
     for (int t = 0; t < total_threads; ++t) {
-        histogram[b] += local_histograms[b][t];
+        histogram[b] += local_histograms[b * total_threads + t];
     }
 }
 
@@ -80,8 +79,6 @@ double tot    = t_end - t_start;
 double par    = t_mid - t_start;
 double red    = t_end - t_mid;
 \end{lstlisting}
-
-\textit{Nota sulla portabilità:} Nello scheletro del codice descritto sopra, l'allocazione tramite puntatore a VLA (\texttt{int (*local\_histograms)[num\_threads]}) è stata successivamente rifattorizzata nei file sorgente effettivi in un array monodimensionale lineare (\texttt{int *lh = calloc(NUM\_BINS * nt, sizeof(int))}) indicizzato come \texttt{lh[bin * nt + tid]}. Questa scelta progettuale garantisce la compatibilità del codice con qualsiasi compilatore C standard (incluso MSVC su Windows), che potrebbe non supportare i Variable-Length Arrays (introdotti come opzionali a partire dallo standard C11).
 
 Analizzando le misurazioni isolate (\texttt{red}), è emerso che il tempo necessario per lo svolgimento del ciclo di riduzione seriale finale (i due cicli \texttt{for} annidati) risulta essere ordini di grandezza inferiore rispetto a quello impiegato per la porzione parallela e del tutto trascurabile indipendentemente dalla dimensione dell'array di input. Per questo motivo, nelle sezioni successive l'analisi della performance è incentrata sulla sola porzione parallela.
 
@@ -431,5 +428,173 @@ Questo dato conferma empiricamente quanto teorizzato in Sez. \ref{sec:memory_ban
     \caption{L'implementazione v3 annulla il ritardo nei primi cicli e restituisce l'andamento discendente atteso, fino allo stallo fisiologico per saturazione hardware.}
     \label{fig:fig4}
 \end{figure}
+
+
+\section{Appendice: Tabelle dei Risultati per v2 e v3}
+
+Di seguito vengono riportati i dati completi raccolti durante i test prestazionali per le versioni ottimizzate \texttt{v2} (trasposta) e \texttt{v3} (padding a 64 byte). Si evidenzia che, ai fini dell'analisi comparativa, si preferisce fare riferimento alle rappresentazioni grafiche fornite nella Sezione precedente, in quanto offrono una panoramica (\textit{overview}) decisamente più immediata, chiara ed intuitiva dell'andamento prestazionale e della scalabilità al variare dei thread rispetto alla consultazione diretta dei dati numerici tabulati.
+
+\subsection{Dati Versione v2}
+\begin{center}
+\small
+\begin{longtable}{crccccc}
+    \caption{Tempi di esecuzione, speedup ed efficienza estesi fino a 4096 thread (v2 - Trasposta).} \label{tab:performance_data_v2} \\
+    \toprule
+    \textbf{Lunghezza} & \textbf{Thread} & \textbf{T.tot (s)} & \textbf{T.par (s)} & \textbf{T.red (s)} & \textbf{Speedup} & \textbf{Efficienza} \\
+    \midrule
+    \endfirsthead
+    
+    \multicolumn{7}{c}%
+    {\bfseries \tablename\ \thetable{} -- continua dalla pagina precedente} \\
+    \toprule
+    \textbf{Lunghezza} & \textbf{Thread} & \textbf{T.tot (s)} & \textbf{T.par (s)} & \textbf{T.red (s)} & \textbf{Speedup} & \textbf{Efficienza} \\
+    \midrule
+    \endhead
+    
+    \midrule \multicolumn{7}{r}{{Continua nella pagina successiva}} \\
+    \endfoot
+    
+    \bottomrule
+    \endlastfoot
+
+    \textbf{10\,000\,000} & 1    & 0.004614 & 0.004614 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.009557 & 0.009557 & 0.000000 & 0.483  & 0.2414 \\
+                       & 4    & 0.017265 & 0.017265 & 0.000000 & 0.267  & 0.0668 \\
+                       & 8    & 0.011287 & 0.011286 & 0.000000 & 0.409  & 0.0511 \\
+                       & 16   & 0.005319 & 0.005319 & 0.000000 & 0.867  & 0.0542 \\
+                       & 32   & 0.003136 & 0.003135 & 0.000000 & 1.471  & 0.0460 \\
+                       & 64   & 0.003468 & 0.003468 & 0.000000 & 1.330  & 0.0208 \\
+                       & 128  & 0.003026 & 0.003026 & 0.000000 & 1.525  & 0.0119 \\
+                       & 256  & 0.003782 & 0.003781 & 0.000001 & 1.220  & 0.0048 \\
+                       & 512  & 0.005666 & 0.005666 & 0.000000 & 0.814  & 0.0016 \\
+                       & 1024 & 0.011211 & 0.011211 & 0.000000 & 0.412  & 0.0004 \\
+                       & 2048 & 0.020969 & 0.020969 & 0.000000 & 0.220  & 0.0001 \\
+                       & 4096 & 0.045362 & 0.045361 & 0.000000 & 0.102  & 0.0000 \\
+    \midrule
+    \textbf{50\,000\,000} & 1    & 0.021367 & 0.021366 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.041574 & 0.041574 & 0.000000 & 0.514  & 0.2570 \\
+                       & 4    & 0.149932 & 0.149932 & 0.000000 & 0.143  & 0.0356 \\
+                       & 8    & 0.034210 & 0.034209 & 0.000000 & 0.625  & 0.0781 \\
+                       & 16   & 0.021810 & 0.021810 & 0.000000 & 0.980  & 0.0612 \\
+                       & 32   & 0.018839 & 0.018839 & 0.000000 & 1.134  & 0.0354 \\
+                       & 64   & 0.012070 & 0.012070 & 0.000000 & 1.770  & 0.0277 \\
+                       & 128  & 0.010031 & 0.010031 & 0.000000 & 2.130  & 0.0166 \\
+                       & 256  & 0.010837 & 0.010837 & 0.000000 & 1.972  & 0.0077 \\
+                       & 512  & 0.012856 & 0.012855 & 0.000000 & 1.662  & 0.0032 \\
+                       & 1024 & 0.018301 & 0.018301 & 0.000000 & 1.168  & 0.0011 \\
+                       & 2048 & 0.027870 & 0.027870 & 0.000000 & 0.767  & 0.0004 \\
+                       & 4096 & 0.048493 & 0.048492 & 0.000000 & 0.441  & 0.0001 \\
+    \midrule
+    \textbf{100\,000\,000} & 1    & 0.044362 & 0.044361 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.131019 & 0.131019 & 0.000000 & 0.339  & 0.1693 \\
+                       & 4    & 0.249057 & 0.249056 & 0.000000 & 0.178  & 0.0445 \\
+                       & 8    & 0.093680 & 0.093679 & 0.000000 & 0.474  & 0.0592 \\
+                       & 16   & 0.044912 & 0.044911 & 0.000000 & 0.988  & 0.0617 \\
+                       & 32   & 0.033936 & 0.033936 & 0.000000 & 1.307  & 0.0409 \\
+                       & 64   & 0.022770 & 0.022770 & 0.000000 & 1.948  & 0.0304 \\
+                       & 128  & 0.015899 & 0.015899 & 0.000000 & 2.790  & 0.0218 \\
+                       & 256  & 0.017411 & 0.017410 & 0.000000 & 2.548  & 0.0100 \\
+                       & 512  & 0.020607 & 0.020607 & 0.000000 & 2.153  & 0.0042 \\
+                       & 1024 & 0.021698 & 0.021698 & 0.000000 & 2.044  & 0.0020 \\
+                       & 2048 & 0.032150 & 0.032150 & 0.000000 & 1.380  & 0.0007 \\
+                       & 4096 & 0.058744 & 0.058743 & 0.000000 & 0.755  & 0.0002 \\
+    \midrule
+    \textbf{500\,000\,000} & 1    & 0.205731 & 0.205731 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.433256 & 0.433255 & 0.000001 & 0.475  & 0.2374 \\
+                       & 4    & 0.785337 & 0.785337 & 0.000000 & 0.262  & 0.0655 \\
+                       & 8    & 0.531943 & 0.531943 & 0.000000 & 0.387  & 0.0483 \\
+                       & 16   & 0.193902 & 0.193901 & 0.000000 & 1.061  & 0.0663 \\
+                       & 32   & 0.118751 & 0.118751 & 0.000000 & 1.732  & 0.0541 \\
+                       & 64   & 0.070808 & 0.070807 & 0.000000 & 2.905  & 0.0454 \\
+                       & 128  & 0.077661 & 0.077661 & 0.000000 & 2.649  & 0.0207 \\
+                       & 256  & 0.068371 & 0.068371 & 0.000000 & 3.009  & 0.0118 \\
+                       & 512  & 0.056880 & 0.056880 & 0.000000 & 3.617  & 0.0071 \\
+                       & 1024 & 0.063475 & 0.063474 & 0.000000 & 3.241  & 0.0032 \\
+                       & 2048 & 0.065985 & 0.065985 & 0.000000 & 3.118  & 0.0015 \\
+                       & 4096 & 0.110486 & 0.110485 & 0.000000 & 1.862  & 0.0005 \\
+\end{longtable}
+\end{center}
+
+\newpage
+\subsection{Dati Versione v3}
+\begin{center}
+\small
+\begin{longtable}{crccccc}
+    \caption{Tempi di esecuzione, speedup ed efficienza estesi fino a 4096 thread (v3 - Padding 64B).} \label{tab:performance_data_v3} \\
+    \toprule
+    \textbf{Lunghezza} & \textbf{Thread} & \textbf{T.tot (s)} & \textbf{T.par (s)} & \textbf{T.red (s)} & \textbf{Speedup} & \textbf{Efficienza} \\
+    \midrule
+    \endfirsthead
+    
+    \multicolumn{7}{c}%
+    {\bfseries \tablename\ \thetable{} -- continua dalla pagina precedente} \\
+    \toprule
+    \textbf{Lunghezza} & \textbf{Thread} & \textbf{T.tot (s)} & \textbf{T.par (s)} & \textbf{T.red (s)} & \textbf{Speedup} & \textbf{Efficienza} \\
+    \midrule
+    \endhead
+    
+    \midrule \multicolumn{7}{r}{{Continua nella pagina successiva}} \\
+    \endfoot
+    
+    \bottomrule
+    \endlastfoot
+
+    \textbf{10\,000\,000} & 1    & 0.004355 & 0.004354 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.003297 & 0.003296 & 0.000000 & 1.321  & 0.6605 \\
+                       & 4    & 0.002471 & 0.002471 & 0.000000 & 1.762  & 0.4405 \\
+                       & 8    & 0.001917 & 0.001917 & 0.000000 & 2.271  & 0.2839 \\
+                       & 16   & 0.006435 & 0.006435 & 0.000000 & 0.677  & 0.0423 \\
+                       & 32   & 0.001456 & 0.001456 & 0.000000 & 2.990  & 0.0934 \\
+                       & 64   & 0.002132 & 0.002132 & 0.000000 & 2.042  & 0.0319 \\
+                       & 128  & 0.002899 & 0.002898 & 0.000000 & 1.502  & 0.0117 \\
+                       & 256  & 0.004369 & 0.004369 & 0.000000 & 0.997  & 0.0039 \\
+                       & 512  & 0.005897 & 0.005897 & 0.000000 & 0.738  & 0.0014 \\
+                       & 1024 & 0.014759 & 0.014759 & 0.000001 & 0.295  & 0.0003 \\
+                       & 2048 & 0.027253 & 0.027253 & 0.000000 & 0.160  & 0.0001 \\
+                       & 4096 & 0.042993 & 0.042993 & 0.000000 & 0.101  & 0.0000 \\
+    \midrule
+    \textbf{50\,000\,000} & 1    & 0.020511 & 0.020511 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.029097 & 0.029096 & 0.000000 & 0.705  & 0.3525 \\
+                       & 4    & 0.097653 & 0.097653 & 0.000000 & 0.210  & 0.0525 \\
+                       & 8    & 0.013257 & 0.013257 & 0.000000 & 1.547  & 0.1934 \\
+                       & 16   & 0.008309 & 0.008309 & 0.000000 & 2.469  & 0.1543 \\
+                       & 32   & 0.005755 & 0.005755 & 0.000000 & 3.564  & 0.1114 \\
+                       & 64   & 0.005947 & 0.005946 & 0.000000 & 3.449  & 0.0539 \\
+                       & 128  & 0.008874 & 0.008874 & 0.000000 & 2.311  & 0.0181 \\
+                       & 256  & 0.007723 & 0.007723 & 0.000000 & 2.656  & 0.0104 \\
+                       & 512  & 0.011667 & 0.011667 & 0.000000 & 1.758  & 0.0034 \\
+                       & 1024 & 0.011972 & 0.011971 & 0.000000 & 1.713  & 0.0017 \\
+                       & 2048 & 0.023342 & 0.023342 & 0.000000 & 0.879  & 0.0004 \\
+                       & 4096 & 0.040606 & 0.040605 & 0.000000 & 0.505  & 0.0001 \\
+    \midrule
+    \textbf{100\,000\,000} & 1    & 0.044597 & 0.044597 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.052620 & 0.052619 & 0.000000 & 0.848  & 0.4238 \\
+                       & 4    & 0.025658 & 0.025658 & 0.000000 & 1.738  & 0.4345 \\
+                       & 8    & 0.103575 & 0.103574 & 0.000000 & 0.431  & 0.0538 \\
+                       & 16   & 0.014757 & 0.014757 & 0.000000 & 3.022  & 0.1889 \\
+                       & 32   & 0.011971 & 0.011971 & 0.000000 & 3.725  & 0.1164 \\
+                       & 64   & 0.020329 & 0.020328 & 0.000000 & 2.194  & 0.0343 \\
+                       & 128  & 0.012678 & 0.012678 & 0.000000 & 3.518  & 0.0275 \\
+                       & 256  & 0.017910 & 0.017910 & 0.000000 & 2.490  & 0.0097 \\
+                       & 512  & 0.017398 & 0.017398 & 0.000000 & 2.563  & 0.0050 \\
+                       & 1024 & 0.017740 & 0.017740 & 0.000000 & 2.514  & 0.0025 \\
+                       & 2048 & 0.029486 & 0.029486 & 0.000000 & 1.512  & 0.0007 \\
+                       & 4096 & 0.043828 & 0.043828 & 0.000000 & 1.018  & 0.0002 \\
+    \midrule
+    \textbf{500\,000\,000} & 1    & 0.205383 & 0.205383 & 0.000000 & 1.000  & 1.0000 \\
+                       & 2    & 0.166810 & 0.166809 & 0.000001 & 1.231  & 0.6156 \\
+                       & 4    & 0.113049 & 0.113048 & 0.000000 & 1.817  & 0.4542 \\
+                       & 8    & 0.091031 & 0.091031 & 0.000000 & 2.256  & 0.2820 \\
+                       & 16   & 0.075094 & 0.075094 & 0.000000 & 2.735  & 0.1709 \\
+                       & 32   & 0.064090 & 0.064090 & 0.000001 & 3.205  & 0.1001 \\
+                       & 64   & 0.054305 & 0.054305 & 0.000000 & 3.782  & 0.0591 \\
+                       & 128  & 0.052900 & 0.052900 & 0.000000 & 3.882  & 0.0303 \\
+                       & 256  & 0.051147 & 0.051147 & 0.000000 & 4.016  & 0.0157 \\
+                       & 512  & 0.055092 & 0.055092 & 0.000000 & 3.728  & 0.0073 \\
+                       & 1024 & 0.057512 & 0.057512 & 0.000000 & 3.571  & 0.0035 \\
+                       & 2048 & 0.071239 & 0.071238 & 0.000000 & 2.883  & 0.0014 \\
+                       & 4096 & 0.083816 & 0.083816 & 0.000000 & 2.450  & 0.0006 \\
+\end{longtable}
+\end{center}
 
 \end{document}
